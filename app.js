@@ -167,17 +167,27 @@ const ORDER=["beranda","peta","koreksi","admin"];
 function render(dir){
   const items=[["beranda","Beranda",ICON.home],["peta","Peta",ICON.map],["koreksi","Koreksi",ICON.edit]];
   if(isAdmin())items.push(["admin","Admin",ICON.admin]);
-  $("#nav").innerHTML=`<div class="brand"><div class="logo" style="width:38px;height:38px;border-radius:12px"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg></div></div>`+
+  const nav=$("#nav"),key=items.map(i=>i[0]).join();
+  if(nav.dataset.k!==key){nav.dataset.k=key;nav.innerHTML=`<span class="nav-ind" aria-hidden="true"></span><div class="brand"><div class="logo" style="width:38px;height:38px;border-radius:12px"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg></div></div>`+
     items.map(([k,l,ic])=>`<button type="button" data-v="${k}" class="${S.view===k?"on":""}">${ic}<span>${l}</span></button>`).join("")+
-    `<button type="button" data-v="keluar">${ICON.out}<span>Keluar</span></button>`;
+    `<button type="button" data-v="keluar">${ICON.out}<span>Keluar</span></button>`}
+  nav.querySelectorAll("[data-v]").forEach(b=>b.classList.toggle("on",b.dataset.v===S.view));moveInd(true);
   if(S.view!=="peta")destroyMap();
   ({beranda:vBeranda,peta:vPeta,koreksi:vKoreksi,admin:vAdmin})[S.view]();
   const first=$("#view").firstElementChild;
   if(first&&dir)first.classList.add(S.view==="peta"?"a-zoom":(dir<0?"a-inL":"a-inR"));
   applyTheme();
 }
+/* penanda menu aktif: bergeser (efek pegas) ke tombol yang dipilih */
+function moveInd(anim){requestAnimationFrame(()=>{const ind=$(".nav-ind"),b=$("#nav button.on");if(!ind)return;
+  if(!b||!b.offsetWidth){ind.classList.remove("ready");return}
+  ind.classList.toggle("instant",!anim||!ind.classList.contains("ready"));
+  ind.style.width=b.offsetWidth+"px";ind.style.height=b.offsetHeight+"px";ind.style.transform=`translate(${b.offsetLeft}px,${b.offsetTop}px)`;
+  void ind.offsetWidth;ind.classList.add("ready");ind.classList.remove("instant")})}
+addEventListener("resize",()=>moveInd(false));
+if(document.fonts)document.fonts.ready.then(()=>moveInd(false));
 function go(v){if(v===S.view)return;const d=ORDER.indexOf(v)-ORDER.indexOf(S.view)||1;const cur=$("#view").firstElementChild;
-  S.view=v;$("#nav").querySelectorAll("[data-v]").forEach(b=>b.classList.toggle("on",b.dataset.v===v));
+  S.view=v;$("#nav").querySelectorAll("[data-v]").forEach(b=>b.classList.toggle("on",b.dataset.v===v));moveInd(true);
   if(cur){cur.style.transition="opacity .2s var(--ease-in),transform .2s var(--ease-in)";cur.style.opacity="0";cur.style.transform=`perspective(1400px) translate3d(${d>0?-28:28}px,0,-50px) rotateY(${d>0?5:-5}deg)`}
   setTimeout(()=>render(d),cur?190:0)}
 $("#nav").addEventListener("click",e=>{const b=e.target.closest("button[data-v]");if(!b)return;if(b.dataset.v==="keluar")return logout();go(b.dataset.v)});
@@ -297,7 +307,7 @@ function fitSls(anim){
   let b=null;const g=geomOf(S.sel);
   if(g)b=L.geoJSON(g).getBounds();else if(ptsOf(S.sel).length)b=L.latLngBounds(ptsOf(S.sel).map(p=>[p.y,p.x]));
   if(!b||!b.isValid())return;
-  const o=MOBILE()?{paddingTopLeft:[14,S.minHead?60:180],paddingBottomRight:[14,S.minSheet?80:innerHeight*.4]}:{paddingTopLeft:[20,20],paddingBottomRight:[370,20]};
+  const o=MOBILE()?{paddingTopLeft:[14,S.minHead?60:180],paddingBottomRight:[14,(S.minSheet?80:innerHeight*.4)+60]}:{paddingTopLeft:[20,20],paddingBottomRight:[370,20]};
   anim?map.flyToBounds(b,{...o,duration:.9,easeLinearity:.15}):map.fitBounds(b,o);
 }
 function setScan(){
@@ -406,7 +416,7 @@ function openPop(p,atNew){
   S.focus=p.id;styleMarkers();
   const c=S.corr[p.id],d=S.draft&&S.focus===p.id?S.draft:null;
   const ll=d&&d.lat?[d.lat,d.lng]:(atNew&&c&&c.lat!=null?[c.lat,c.lng]:[p.y,p.x]);
-  const top=MOBILE()?($("#mapTop").offsetHeight+20):20,bot=MOBILE()?($("#sheet").offsetHeight+20):20,right=MOBILE()?14:370;
+  const top=MOBILE()?($("#mapTop").offsetHeight+20):20,bot=MOBILE()?($("#sheet").offsetHeight+80):20,right=MOBILE()?14:370;
   if(!popup)popup=L.popup({className:"pp",maxWidth:260,minWidth:236,closeButton:false,closeOnClick:false,autoClose:false});
   popup.options.autoPanPaddingTopLeft=L.point(14,top);popup.options.autoPanPaddingBottomRight=L.point(right,bot);
   const show=()=>{popup.setLatLng(ll).setContent(popHtml(p));if(!map.hasLayer(popup))popup.openOn(map);popFor=p.id;bindPop(p)};
