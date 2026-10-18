@@ -2,6 +2,8 @@
 "use strict";
 const sb = supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_KEY, { auth: { persistSession: true, detectSessionInUrl: true, flowType: "pkce" } });
 const TARGET_TITIK = 36980, TARGET_SLS = 630;
+/* naikkan bersama ?v= di index.html dan nama cache di sw.js setiap rilis */
+const VERSI = "4", VERSI_TGL = "18 Okt 2026";
 const MOBILE = () => innerWidth < 960;
 const S = {
   me: null, view: "beranda", sel: null, scan: "wss", opac: .85, showPts: true, showBatas: true, base: "sat",
@@ -47,6 +49,17 @@ function applyTheme(){document.documentElement.classList.toggle("light",S.theme=
   const m=document.querySelector('meta[name="theme-color"]');if(m)m.content=S.theme==="light"?"#eceefa":"#0d0a20"}
 document.addEventListener("click",e=>{if(e.target.closest(".theme-toggle")){S.theme=S.theme==="light"?"dark":"light";store.set("ctb-theme",S.theme);applyTheme();if(map)drawPts()}});
 applyTheme();
+
+/* ---------- Kaca 3D: kartu sedikit miring & berkilau mengikuti kursor (hanya perangkat bermouse) ---------- */
+if(matchMedia("(hover:hover) and (pointer:fine)").matches&&!matchMedia("(prefers-reduced-motion:reduce)").matches){
+  const TILT=".glass.card,.glass.kpi,.glass.corr,.login-card";let cur=null;
+  const reset=el=>{["--rx","--ry","--sheen"].forEach(k=>el.style.removeProperty(k));el.classList.remove("tilt")};
+  document.addEventListener("pointermove",e=>{const el=e.target.closest(TILT);if(cur&&cur!==el)reset(cur);cur=el;if(!el)return;
+    const r=el.getBoundingClientRect(),x=(e.clientX-r.left)/r.width,y=(e.clientY-r.top)/r.height,k=Math.min(1,260/Math.max(r.width,r.height));
+    el.classList.add("tilt");el.style.setProperty("--rx",((.5-y)*6*k).toFixed(2)+"deg");el.style.setProperty("--ry",((x-.5)*7*k).toFixed(2)+"deg");
+    el.style.setProperty("--mx",(x*100).toFixed(1)+"%");el.style.setProperty("--my",(y*100).toFixed(1)+"%");el.style.setProperty("--sheen","1")},{passive:true});
+  document.documentElement.addEventListener("pointerleave",()=>{if(cur){reset(cur);cur=null}});
+}
 
 /* ---------- Pasang aplikasi (PWA) ---------- */
 let deferredInstall=null;
@@ -156,19 +169,29 @@ const ORDER=["beranda","peta","koreksi","admin"];
 function render(dir){
   const items=[["beranda","Beranda",ICON.home],["peta","Peta",ICON.map],["koreksi","Koreksi",ICON.edit]];
   if(isAdmin())items.push(["admin","Admin",ICON.admin]);
-  $("#nav").innerHTML=`<div class="brand"><div class="logo" style="width:38px;height:38px;border-radius:12px"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg></div></div>`+
+  const nav=$("#nav"),key=items.map(i=>i[0]).join();
+  if(nav.dataset.k!==key){nav.dataset.k=key;nav.innerHTML=`<span class="nav-ind" aria-hidden="true"></span><div class="brand"><div class="logo" style="width:38px;height:38px;border-radius:12px"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg></div></div>`+
     items.map(([k,l,ic])=>`<button type="button" data-v="${k}" class="${S.view===k?"on":""}">${ic}<span>${l}</span></button>`).join("")+
-    `<button type="button" data-v="keluar">${ICON.out}<span>Keluar</span></button>`;
+    `<button type="button" data-v="keluar">${ICON.out}<span>Keluar</span></button>`}
+  nav.querySelectorAll("[data-v]").forEach(b=>b.classList.toggle("on",b.dataset.v===S.view));moveInd(true);
   if(S.view!=="peta")destroyMap();
   ({beranda:vBeranda,peta:vPeta,koreksi:vKoreksi,admin:vAdmin})[S.view]();
   const first=$("#view").firstElementChild;
   if(first&&dir)first.classList.add(S.view==="peta"?"a-zoom":(dir<0?"a-inL":"a-inR"));
   applyTheme();
 }
+/* penanda menu aktif: bergeser (efek pegas) ke tombol yang dipilih */
+function moveInd(anim){requestAnimationFrame(()=>{const ind=$(".nav-ind"),b=$("#nav button.on");if(!ind)return;
+  if(!b||!b.offsetWidth){ind.classList.remove("ready");return}
+  ind.classList.toggle("instant",!anim||!ind.classList.contains("ready"));
+  ind.style.width=b.offsetWidth+"px";ind.style.height=b.offsetHeight+"px";ind.style.transform=`translate(${b.offsetLeft}px,${b.offsetTop}px)`;
+  void ind.offsetWidth;ind.classList.add("ready");ind.classList.remove("instant")})}
+addEventListener("resize",()=>moveInd(false));
+if(document.fonts)document.fonts.ready.then(()=>moveInd(false));
 function go(v){if(v===S.view)return;const d=ORDER.indexOf(v)-ORDER.indexOf(S.view)||1;const cur=$("#view").firstElementChild;
-  S.view=v;$("#nav").querySelectorAll("[data-v]").forEach(b=>b.classList.toggle("on",b.dataset.v===v));
-  if(cur){cur.style.transition="opacity .16s var(--ease-in),transform .16s var(--ease-in)";cur.style.opacity="0";cur.style.transform=`translateX(${d>0?-22:22}px)`}
-  setTimeout(()=>render(d),cur?150:0)}
+  S.view=v;$("#nav").querySelectorAll("[data-v]").forEach(b=>b.classList.toggle("on",b.dataset.v===v));moveInd(true);
+  if(cur){cur.style.transition="opacity .2s var(--ease-in),transform .2s var(--ease-in)";cur.style.opacity="0";cur.style.transform=`perspective(1400px) translate3d(${d>0?-28:28}px,0,-50px) rotateY(${d>0?5:-5}deg)`}
+  setTimeout(()=>render(d),cur?190:0)}
 $("#nav").addEventListener("click",e=>{const b=e.target.closest("button[data-v]");if(!b)return;if(b.dataset.v==="keluar")return logout();go(b.dataset.v)});
 async function refreshAll(){try{await loadAll();S.pts={};S.urls={};toast("Data diperbarui.");render(0)}catch(e){toast("Gagal memuat ulang: "+e.message)}}
 
@@ -198,6 +221,7 @@ function vBeranda(){
     <div class="section-h" style="--i:2"><div><h2>Wilayah</h2><small class="muted">${scopeTxt}</small></div>
       <label class="search" aria-label="Cari SLS">${ICON.search}<input class="field" id="q" placeholder="Cari nama atau kode SLS" value="${esc(S.q)}" autocomplete="off"></label></div>
     <div id="groups" style="--i:3;display:grid;gap:8px"></div>
+    <div class="ver" style="--i:4">Cek Titik Bangunan Tempeh · <span class="mono">Versi ${VERSI}</span> · diperbarui ${VERSI_TGL}</div>
   </div></div>`;
   if(!sl.length)$("#groups").innerHTML=`<div class="glass empty">Belum ada SLS untuk akun ini. Hubungi admin.</div>`;else drawGroups(groups);
   $("#q").oninput=e=>{S.q=e.target.value.trim().toLowerCase();drawGroups(groups)};
@@ -286,7 +310,7 @@ function fitSls(anim){
   let b=null;const g=geomOf(S.sel);
   if(g)b=L.geoJSON(g).getBounds();else if(ptsOf(S.sel).length)b=L.latLngBounds(ptsOf(S.sel).map(p=>[p.y,p.x]));
   if(!b||!b.isValid())return;
-  const o=MOBILE()?{paddingTopLeft:[14,S.minHead?60:180],paddingBottomRight:[14,S.minSheet?80:innerHeight*.4]}:{paddingTopLeft:[20,20],paddingBottomRight:[370,20]};
+  const o=MOBILE()?{paddingTopLeft:[14,S.minHead?60:180],paddingBottomRight:[14,(S.minSheet?80:innerHeight*.4)+60]}:{paddingTopLeft:[20,20],paddingBottomRight:[370,20]};
   anim?map.flyToBounds(b,{...o,duration:.9,easeLinearity:.15}):map.fitBounds(b,o);
 }
 function setScan(){
@@ -326,7 +350,7 @@ function renderHead(first){
   $("#tBat").onclick=e=>{S.showBatas=!S.showBatas;e.currentTarget.classList.toggle("on",S.showBatas);S.showBatas?L_bat.addTo(map):L_bat.remove()};
   $("#tBase").onclick=e=>{S.base=S.base==="sat"?"off":"sat";e.currentTarget.classList.toggle("on",S.base==="sat");if(S.base==="sat")baseLayer.addTo(map);else baseLayer.remove()};
 }
-function collapseHead(min){const cur=$("#mapTop").firstElementChild;cur.style.transition="opacity .16s,transform .2s var(--ease-in)";cur.style.opacity="0";cur.style.transform="scale(.85)";setTimeout(()=>{S.minHead=min;renderHead()},150)}
+function collapseHead(min){const cur=$("#mapTop").firstElementChild;cur.style.transition="opacity .16s,transform .2s var(--ease-in)";cur.style.opacity="0";cur.style.transform="perspective(800px) scale(.88) rotateX(12deg)";setTimeout(()=>{S.minHead=min;renderHead()},150)}
 function switchSls(id){
   closePop(true);setSel(id);S.focus=null;S.placing=null;S.draft=null;S.detail=null;S._view=null;
   if(L_pts)L_pts.remove();if(L_cor)L_cor.remove();if(scanLayer){scanLayer.remove();scanLayer=null}
@@ -395,7 +419,7 @@ function openPop(p,atNew){
   S.focus=p.id;styleMarkers();
   const c=S.corr[p.id],d=S.draft&&S.focus===p.id?S.draft:null;
   const ll=d&&d.lat?[d.lat,d.lng]:(atNew&&c&&c.lat!=null?[c.lat,c.lng]:[p.y,p.x]);
-  const top=MOBILE()?($("#mapTop").offsetHeight+20):20,bot=MOBILE()?($("#sheet").offsetHeight+20):20,right=MOBILE()?14:370;
+  const top=MOBILE()?($("#mapTop").offsetHeight+20):20,bot=MOBILE()?($("#sheet").offsetHeight+80):20,right=MOBILE()?14:370;
   if(!popup)popup=L.popup({className:"pp",maxWidth:260,minWidth:236,closeButton:false,closeOnClick:false,autoClose:false});
   popup.options.autoPanPaddingTopLeft=L.point(14,top);popup.options.autoPanPaddingBottomRight=L.point(right,bot);
   const show=()=>{popup.setLatLng(ll).setContent(popHtml(p));if(!map.hasLayer(popup))popup.openOn(map);popFor=p.id;bindPop(p)};
@@ -575,21 +599,27 @@ function vAdmin(){
         <div class="row" style="flex-wrap:nowrap"><input class="field" id="admEmail" placeholder="email koordinator" style="flex:1"><input class="field" id="admName" placeholder="nama" style="flex:1"><button class="btn btn-grad btn-sm" id="addAdm" type="button">Tambah admin</button></div></div>
     </section>
     <section style="display:grid;gap:10px;--i:3">
-      <div class="section-h"><h2>Petugas</h2><small class="muted">${pml.length} PML · ${Object.values(S.people).filter(v=>v.peran==="PPL").length} PPL · ubah email lalu tekan Simpan di baris itu</small></div>
+      <div class="section-h"><h2>Petugas</h2><small class="muted">${pml.length} PML · ${Object.values(S.people).filter(v=>v.peran==="PPL").length} PPL · ubah nama atau email lalu tekan Simpan di baris itu</small></div>
       <div class="tbl-wrap glass" style="max-height:420px"><table><thead><tr><th>Wilayah</th><th>Nama</th><th>Peran</th><th>Email login</th><th></th></tr></thead><tbody>
-        ${rows.map(r=>`<tr${r.peran==="PML"?' style="background:var(--soft)"':""}><td class="mono">${nSlsOf(r.email)} SLS</td><td>${r.peran==="PML"?"<b>"+esc(r.nama)+"</b>":esc(r.nama)}</td><td>${r.peran}${r.admin?" · admin":""}</td><td><input class="field" value="${esc(r.email)}" data-old="${esc(r.email)}" aria-label="Email ${esc(r.nama)}"></td><td><button class="btn btn-ghost btn-sm" data-saveem="${esc(r.email)}" type="button">Simpan</button></td></tr>`).join("")}
+        ${rows.map(r=>`<tr${r.peran==="PML"?' style="background:var(--soft)"':""}><td class="mono">${nSlsOf(r.email)} SLS</td><td><input class="field nm" data-f="nama" value="${esc(r.nama)}" data-old="${esc(r.nama)}" aria-label="Nama ${esc(r.nama)}"${r.peran==="PML"?' style="font-weight:700"':""}></td><td>${r.peran}${r.admin?" · admin":""}</td><td><input class="field" data-f="email" value="${esc(r.email)}" data-old="${esc(r.email)}" aria-label="Email ${esc(r.nama)}"></td><td><button class="btn btn-ghost btn-sm" data-saveem="${esc(r.email)}" type="button">Simpan</button></td></tr>`).join("")}
       </tbody></table></div>
     </section>
   </div></div>`;
   $("#view").querySelectorAll("input[data-imp]").forEach(inp=>inp.onchange=()=>{const files=[...inp.files];inp.value="";if(files.length)runImport(inp.dataset.imp,files)});
   $("#dlAll").onclick=()=>exportKoreksi(false);$("#dlOk").onclick=()=>exportKoreksi(true);
-  $("#view").querySelectorAll("[data-saveem]").forEach(b=>b.onclick=async()=>{
-    const old=b.dataset.saveem,inp=b.closest("tr").querySelector("input"),nw=inp.value.trim().toLowerCase();
-    if(!nw||nw===old){toast("Email tidak berubah.");return}
-    if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(nw)){toast("Format email tidak valid.");return}
-    b.disabled=true;const{error}=await sb.from("petugas").update({email:nw}).eq("email",old);
+  $("#view").querySelectorAll("[data-saveem]").forEach(b=>{const tr=b.closest("tr"),nmI=tr.querySelector('[data-f="nama"]'),emI=tr.querySelector('[data-f="email"]');
+    const dirty=()=>{const d=nmI.value.trim()!==nmI.dataset.old||emI.value.trim().toLowerCase()!==emI.dataset.old;b.classList.toggle("btn-grad",d);b.classList.toggle("btn-ghost",!d)};
+    [nmI,emI].forEach(i=>{i.oninput=dirty;i.onkeydown=e=>{if(e.key==="Enter")b.click()}});
+    b.onclick=async()=>{
+    const old=b.dataset.saveem,nw=emI.value.trim().toLowerCase(),nm=nmI.value.trim().replace(/\s+/g," "),upd={};
+    if(!nm){toast("Nama tidak boleh kosong.");return}
+    if(nm!==nmI.dataset.old)upd.nama=nm;
+    if(nw!==old){if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(nw)){toast("Format email tidak valid.");return}upd.email=nw}
+    if(!Object.keys(upd).length){toast("Tidak ada perubahan.");return}
+    b.disabled=true;const{error}=await sb.from("petugas").update(upd).eq("email",old);
     if(error){toast("Gagal: "+error.message);b.disabled=false;return}
-    toast("Email diganti. Petugas masuk dengan email baru.");await loadAll();vAdmin()});
+    if(upd.nama&&old===S.me.email)S.me.nama=upd.nama;
+    toast(upd.email&&upd.nama?"Nama dan email diganti. Petugas masuk dengan email baru.":upd.email?"Email diganti. Petugas masuk dengan email baru.":"Nama petugas diperbarui.");await loadAll();vAdmin()}});
   $("#addAdm").onclick=async()=>{const e=$("#admEmail").value.trim().toLowerCase(),n=$("#admName").value.trim()||e;
     if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)){toast("Isi email yang valid.");return}
     const ex=S.people[e];const{error}=ex?await sb.from("petugas").update({admin:true}).eq("email",e):await sb.from("petugas").insert({email:e,nama:n,peran:"ADMIN",admin:true});
@@ -695,7 +725,7 @@ async function impAlokasi(files){
   if(!sls.length)throw new Error("Tidak ada baris SLS Kecamatan Tempeh (3508050…) di file.");
   const pr=Object.entries(pml).map(([e,n])=>({email:e,nama:S.people[e]?S.people[e].nama:n,peran:(S.people[e]&&S.people[e].peran==="ADMIN")?"PML":"PML",admin:!!(S.people[e]&&S.people[e].admin)}));
   await upsertBatches("petugas",pr,200,"PML");
-  const pp=Object.entries(ppl).filter(([e])=>!pml[e]).map(([e,v])=>({email:e,nama:v.n,peran:"PPL",pml_email:v.pe,admin:!!(S.people[e]&&S.people[e].admin)}));
+  const pp=Object.entries(ppl).filter(([e])=>!pml[e]).map(([e,v])=>({email:e,nama:S.people[e]?S.people[e].nama:v.n,peran:"PPL",pml_email:v.pe,admin:!!(S.people[e]&&S.people[e].admin)}));
   await upsertBatches("petugas",pp,200,"PPL");
   await upsertBatches("sls",sls,300,"Alokasi SLS");
   IMP.set("Impor alokasi selesai ✓",1);toast("Alokasi petugas diperbarui.");
