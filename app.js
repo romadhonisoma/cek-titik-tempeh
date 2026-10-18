@@ -2,6 +2,8 @@
 "use strict";
 const sb = supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_KEY, { auth: { persistSession: true, detectSessionInUrl: true, flowType: "pkce" } });
 const TARGET_TITIK = 36980, TARGET_SLS = 630;
+/* naikkan bersama ?v= di index.html dan nama cache di sw.js setiap rilis */
+const VERSI = "4", VERSI_TGL = "18 Okt 2026";
 const MOBILE = () => innerWidth < 960;
 const S = {
   me: null, view: "beranda", sel: null, scan: "wss", opac: .85, showPts: true, showBatas: true, base: "sat",
@@ -219,6 +221,7 @@ function vBeranda(){
     <div class="section-h" style="--i:2"><div><h2>Wilayah</h2><small class="muted">${scopeTxt}</small></div>
       <label class="search" aria-label="Cari SLS">${ICON.search}<input class="field" id="q" placeholder="Cari nama atau kode SLS" value="${esc(S.q)}" autocomplete="off"></label></div>
     <div id="groups" style="--i:3;display:grid;gap:8px"></div>
+    <div class="ver" style="--i:4">Cek Titik Bangunan Tempeh · <span class="mono">Versi ${VERSI}</span> · diperbarui ${VERSI_TGL}</div>
   </div></div>`;
   if(!sl.length)$("#groups").innerHTML=`<div class="glass empty">Belum ada SLS untuk akun ini. Hubungi admin.</div>`;else drawGroups(groups);
   $("#q").oninput=e=>{S.q=e.target.value.trim().toLowerCase();drawGroups(groups)};
