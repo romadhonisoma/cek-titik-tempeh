@@ -1,5 +1,5 @@
 /* cache cangkang aplikasi; data selalu dari server */
-const C="ctb-v18",SHELL=["./","index.html","app.css?v=18","app.js?v=18","config.js?v=18","manifest.webmanifest","icon-192.png","icon-512.png"];
+const C="ctb-v20",SHELL=["./","index.html","app.css?v=20","app.js?v=20","config.js?v=20","manifest.webmanifest","icon-192.png","icon-512.png"];
 self.addEventListener("install",e=>{e.waitUntil(caches.open(C).then(c=>c.addAll(SHELL)).then(()=>self.skipWaiting()))});
 self.addEventListener("activate",e=>{e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==C).map(k=>caches.delete(k)))).then(()=>self.clients.claim()))});
 self.addEventListener("fetch",e=>{
