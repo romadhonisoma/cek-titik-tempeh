@@ -607,3 +607,15 @@ pre.code{margin:0;padding:10px;border-radius:10px;background:var(--field);border
 html body .app.on-peta .view .sheet .li.li2 .txt small.st-ok{color:#3ddc8c!important}html body .app.on-peta .view .sheet .li.li2 .txt small.st-kd{color:#f08af8!important}
 :root.light body .app.on-peta .view .sheet .li.li2 .txt small.st-ok{color:#0b7d47!important}:root.light body .app.on-peta .view .sheet .li.li2 .txt small.st-kd{color:#9a1fae!important}
 html body .app.on-peta .view .sheet .li-acts button.on{color:#fff!important}
+/* v22: daftar titik tidak melebar; tombol ✓ ! selalu terlihat */
+.sheet-body,.sheet-body>div,.list{grid-template-columns:minmax(0,1fr);min-width:0}
+.sheet-body{overflow-x:hidden}
+.list{display:grid;gap:5px}
+.li2{min-width:0;max-width:100%;gap:7px;padding:6px 6px 6px 7px}
+.li2 .no{flex:none}
+.li2 .txt{flex:1 1 0;min-width:0;overflow:hidden}
+.li2 .txt b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:11.5px}
+.li2 .txt small{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:10.5px}
+.li-acts{gap:5px}
+.ic-ok,.ic-kd{width:28px;height:28px;font-size:13px}
+.kend{margin-left:10px;min-width:0}
