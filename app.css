@@ -576,3 +576,12 @@ pre.code{margin:0;padding:10px;border-radius:10px;background:var(--field);border
 .kel-r span{font-size:11.5px}
 .kel-r small{font-size:10px;margin-right:4px}
 .li .txt b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}
+/* ===== penempatan titik di HP: tanda + di tengah peta ===== */
+.place-cross{display:none;position:absolute;left:50%;top:50%;width:46px;height:46px;margin:-23px 0 0 -23px;z-index:900;pointer-events:none}
+.cross .place-cross{display:block;animation:grow .35s var(--spring) backwards}
+.place-cross::before,.place-cross::after{content:"";position:absolute;background:#ffd23f;box-shadow:0 0 0 1px rgba(0,0,0,.55);border-radius:2px}
+.place-cross::before{left:22px;top:0;width:2px;height:46px}
+.place-cross::after{top:22px;left:0;height:2px;width:46px}
+.place-cross i{position:absolute;left:13px;top:13px;width:16px;height:16px;border-radius:50%;border:2.5px solid #ffd23f;box-shadow:0 0 0 1px rgba(0,0,0,.55),inset 0 0 0 1px rgba(0,0,0,.4);background:rgba(255,210,63,.18);box-sizing:border-box}
+.cross .place-banner{flex-wrap:wrap}
+.cross .leaflet-container{cursor:grab}

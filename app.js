@@ -3,7 +3,7 @@
 const sb = supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_KEY, { auth: { persistSession: true, detectSessionInUrl: true, flowType: "pkce" } });
 const TARGET_TITIK = 36980, TARGET_SLS = 630;
 /* naikkan bersama ?v= di index.html dan nama cache di sw.js setiap rilis */
-const VERSI = "17", VERSI_TGL = "20 Okt 2026";
+const VERSI = "18", VERSI_TGL = "22 Okt 2026";
 const MOBILE = () => innerWidth < 960;
 const S = {
   me: null, view: "beranda", sel: null, scan: "wss", opac: .85, showPts: true, showBatas: true, base: "sat",
@@ -46,7 +46,7 @@ const ICON = {
 };
 const small=(ic,px=14)=>ic.replace("<svg",`<svg width="${px}" height="${px}"`);
 const JENIS={benar:"Ditandai benar",pindah:"Lokasi diperbaiki",tidak_di_peta:"Tidak ada di peta"};
-const REV={menunggu:["Menunggu PML","p-warn"],disetujui:["Disetujui PML","p-ok"],ditolak:["Ditolak PML","p-bad"],ok:["Benar","p-ok"]};
+const REV={menunggu:["Tersimpan","p-ok"],disetujui:["Tersimpan","p-ok"],ditolak:["Tersimpan","p-ok"],ok:["Benar","p-ok"]};
 const TEM={tanpa_titik:["Nomor tanpa titik","mag","Nomor ada di gambar peta, tetapi tidak ada titik digitalnya"],tidak_di_peta:["Titik tidak di peta","mag","Titik digital ada, tetapi nomornya tidak ditemukan di gambar peta"],dobel:["Nomor dobel di peta","warn","Nomor yang sama ditulis lebih dari sekali di gambar peta"]};
 
 /* ---------- Tema ---------- */
@@ -226,7 +226,7 @@ function vBeranda(){
     <div class="kpis" style="--i:1">
       <div class="glass kpi"><small>SLS</small><b class="mono">${fmt(sl.length)}</b><small>${tot.done} beres · <span style="color:var(--cyan)">${nBatas} berubah batas</span></small></div>
       <div class="glass kpi"><small>Titik bangunan</small><b class="mono">${fmt(tot.n)}</b><small>${fmt(tot.benar)} ditandai benar · <span style="color:var(--warn)">${fmt(tot.far)} perlu dicek</span></small></div>
-      <div class="glass kpi"><small>Perbaikan lokasi</small><b class="mono">${fmt(tot.salah)}</b><small>${menunggu} menunggu ${isPML()?"persetujuan":"PML"}</small></div>
+      <div class="glass kpi"><small>Perbaikan lokasi</small><b class="mono">${fmt(tot.salah)}</b><small>titik dipindah / tidak ada di peta</small></div>
       <div class="glass kpi"><small>Temuan admin</small><b class="mono">${tot.dij}/${tot.tem}</b><small>sudah dijawab</small></div>
     </div>
     <div class="section-h" style="--i:2"><div><h2>Wilayah</h2><small class="muted">${scopeTxt} · per desa, dusun, lalu SLS</small></div>
@@ -298,7 +298,7 @@ async function vPeta(){
    <div class="map-top" id="mapTop"></div>
    <div class="fab-col" id="fabs"><button class="fab glass solid" id="zin" type="button" aria-label="Perbesar">${ICON.plus}</button><button class="fab glass solid" id="zout" type="button" aria-label="Perkecil">${ICON.minus}</button><button class="fab glass solid" id="zfit" type="button" aria-label="Ke batas SLS">${ICON.target}</button></div>
    <div class="glass solid sheet" id="sheet"></div>
-   <div class="glass solid place-banner" id="placeBanner" hidden></div>
+   <div class="glass solid place-banner" id="placeBanner" hidden></div><div class="place-cross" aria-hidden="true"><i></i></div>
    <div class="glass solid map-loading" id="mapLoading"><div class="spinner"></div>Memuat titik…</div></div>`;
   destroyMap();
   map=L.map("map",{zoomControl:false,attributionControl:true,maxZoom:22,minZoom:11,zoomSnap:.25,wheelPxPerZoomLevel:90,inertiaDeceleration:2600,tapTolerance:20,center:[-8.2,113.17],zoom:13});
@@ -424,13 +424,13 @@ function drawPts(){
     const c=S.corr[p.id],moved=c&&c.jenis==="pindah"&&c.lat!=null;
     const m=L.circleMarker([p.y,p.x],{radius:6,color:ringCol(p),weight:2,fillColor:blue,fillOpacity:moved?.45:1,bubblingMouseEvents:false});
     m.bindTooltip(String(+p.no||p.no),{permanent:true,interactive:true,direction:"right",offset:[6,0],className:"nb"+(c&&c.jenis==="benar"?" ok":(p.far?" warn":""))});
-    m.on("click",ev=>{L.DomEvent.stop(ev);if(S.placing){placeAt(ev.latlng);return}openPop(p)});
+    m.on("click",ev=>{L.DomEvent.stop(ev);if(S.placing){placeTap(ev.latlng);return}openPop(p)});
     m.addTo(L_pts);ptMarkers[p.id]=m;
     if(moved){
       L.polyline([[p.y,p.x],[c.lat,c.lng]],{color:"#ffd23f",weight:2,dashArray:"5 5",interactive:false}).addTo(L_cor);
       L.circleMarker([c.lat,c.lng],{radius:7,color:"#ffffff",weight:2,fillColor:"#ffd23f",fillOpacity:1,bubblingMouseEvents:false})
         .bindTooltip(String(+p.no||p.no),{permanent:true,interactive:true,direction:"right",offset:[7,0],className:"nb new"})
-        .on("click",ev=>{L.DomEvent.stop(ev);if(S.placing){placeAt(ev.latlng);return}openPop(p,true)}).addTo(L_cor);
+        .on("click",ev=>{L.DomEvent.stop(ev);if(S.placing){placeTap(ev.latlng);return}openPop(p,true)}).addTo(L_cor);
     }
   });
   const fp=S.focus&&S.draft&&S.draft.lat&&ptById(S.focus);
@@ -448,7 +448,7 @@ function nearest(latlng){
   return best;
 }
 function onMapClick(e){
-  if(S.placing){placeAt(e.latlng);return}
+  if(S.placing){placeTap(e.latlng);return}
   const n=nearest(e.latlng);
   if(n){openPop(n.p,n.atNew);return}
   if(popFor)closePop();
@@ -467,7 +467,7 @@ function popHtml(p){
       <textarea id="popNote" placeholder="Catatan, mis. di gambar nomor ${esc(+p.no||p.no)} ada di seberang jalan">${esc(d.note||"")}</textarea>
       <div class="acts"><button class="btn btn-new" data-act="save" type="button">Simpan</button><button class="btn btn-ghost" data-act="cancel" type="button">Batal</button></div>
       ${d.jenis==="pindah"?`<div><button class="link" data-act="fix" type="button">Pilih ulang lokasi</button></div>`:""}</div>`;
-  const rv=c&&c.jenis!=="benar"&&c.review==="menunggu"&&canReview(p.sls);
+  const rv=false;
   return `<div class="pop">${head}
     ${p.far&&!c?`<div class="note"><b style="color:var(--warn)">Perlu dicek.</b> Titik bernomor ${esc(+p.no||p.no)} di SLS ini berjarak lebih dari 20 m.</div>`:""}
     ${c?`<div style="display:grid;gap:4px"><div class="row" style="gap:5px">${c.jenis==="benar"?`<span class="pill p-ok">Ditandai benar</span>`:`<span class="pill p-new">${JENIS[c.jenis]}</span><span class="pill ${REV[c.review][1]}">${REV[c.review][0]}</span>`}</div>${c.note?`<div class="muted" style="font-size:11px">“${esc(c.note)}” — ${esc(nameOf(c.by))}</div>`:`<div class="dim" style="font-size:10.5px">oleh ${esc(nameOf(c.by))} · ${esc(tgl(c.at))}</div>`}</div>`:""}
@@ -511,11 +511,11 @@ function bindPop(p){
 }
 async function save(p,d){
   const row={assignment_id:p.id,idsubsls:p.sls,no_bang:p.no,unique_bang:p.ub,jenis:d.jenis,lon:d.jenis==="pindah"?d.lng:null,lat:d.jenis==="pindah"?d.lat:null,catatan:d.note||null,oleh_email:S.me.email,
-    status:d.jenis==="benar"?"ok":(canReview(p.sls)?"disetujui":"menunggu")};
+    status:d.jenis==="benar"?"ok":"disetujui"};
   const {data,error}=await sb.from("koreksi").upsert(row,{onConflict:"assignment_id"}).select().single();
   if(error){toast("Gagal menyimpan: "+error.message);refreshPop(p);return}
   S.corr[p.id]=corrFromRow(data);
-  toast(d.jenis==="benar"?"Ditandai benar.":"Perbaikan tersimpan"+(data.status==="disetujui"?" dan langsung disetujui.":", menunggu PML."));
+  toast(d.jenis==="benar"?"Ditandai benar.":"Perbaikan tersimpan.");
   S.draft=null;drawPts();refreshPop(p,data.lat!=null?[data.lat,data.lon]:[p.y,p.x]);renderSheet();
 }
 async function review(aid,status){
@@ -526,13 +526,20 @@ async function review(aid,status){
 function renderBanner(){
   const el=$("#placeBanner");if(!el)return;
   const wrap=map&&map.getContainer().parentElement;
-  if(!S.placing){wrap&&wrap.classList.remove("place-mode");if(!el.hidden){el.style.transition="opacity .2s,transform .2s var(--ease-in)";el.style.opacity="0";el.style.transform="translate(-50%,-14px)";setTimeout(()=>{el.hidden=true;el.style.cssText=""},200)}return}
+  if(!S.placing){wrap&&wrap.classList.remove("place-mode","cross");if(!el.hidden){el.style.transition="opacity .2s,transform .2s var(--ease-in)";el.style.opacity="0";el.style.transform="translate(-50%,-14px)";setTimeout(()=>{el.hidden=true;el.style.cssText=""},200)}return}
   const p=ptById(S.placing);el.style.cssText="";el.hidden=false;wrap.classList.add("place-mode");
-  el.innerHTML=`<span class="no new">${esc(+p.no||p.no)}</span><div style="flex:1;min-width:0"><b>Ketuk lokasi yang benar</b><div class="muted" style="font-size:11px">Titik kuning baru harus di dalam batas SLS</div></div><button class="btn btn-ghost btn-sm" id="cancelPlace" type="button">Batal</button>`;
+  const mob=crossMode();wrap.classList.toggle("cross",mob);
+  el.innerHTML=mob?`<span class="no new">${esc(+p.no||p.no)}</span><div style="flex:1;min-width:0"><b>Geser peta sampai tanda ＋ tepat di bangunan</b><div class="muted" style="font-size:11px">Perbesar peta agar pas, lalu tekan Pasang</div></div><div class="row" style="gap:6px;flex-wrap:nowrap"><button class="btn btn-ghost btn-sm" id="cancelPlace" type="button">Batal</button><button class="btn btn-grad btn-sm" id="okPlace" type="button">Pasang</button></div>`
+    :`<span class="no new">${esc(+p.no||p.no)}</span><div style="flex:1;min-width:0"><b>Ketuk lokasi yang benar</b><div class="muted" style="font-size:11px">Titik kuning baru harus di dalam batas SLS</div></div><button class="btn btn-ghost btn-sm" id="cancelPlace" type="button">Batal</button>`;
   $("#cancelPlace").onclick=()=>{S.placing=null;S.draft=null;renderBanner();drawPts();openPop(p)};
+  if(mob){$("#okPlace").onclick=()=>placeAt(map.getCenter());
+    const c=S.corr[p.id],start=S.draft&&S.draft.lat?[S.draft.lat,S.draft.lng]:(c&&c.lat!=null?[c.lat,c.lng]:[p.y,p.x]);
+    map.setView(start,Math.max(map.getZoom(),19),{animate:true})}
 }
+function crossMode(){return MOBILE()||matchMedia("(pointer:coarse)").matches}
+function placeTap(latlng){if(crossMode()){map.panTo(latlng,{animate:true,duration:.35});return}placeAt(latlng)}
 function placeAt(latlng){
-  if(!inPoly(latlng.lng,latlng.lat,geomOf(petaOf(S.sel)))){toast("Lokasi di luar batas SLS. Ketuk di dalam garis merah.");return}
+  if(!inPoly(latlng.lng,latlng.lat,geomOf(petaOf(S.sel)))){toast(crossMode()?"Tanda ＋ di luar batas SLS. Geser ke dalam garis merah.":"Lokasi di luar batas SLS. Ketuk di dalam garis merah.");return}
   const p=ptById(S.placing);S.draft={...S.draft,jenis:"pindah",lat:latlng.lat,lng:latlng.lng};
   S.placing=null;renderBanner();S.focus=p.id;drawPts();openPop(p);
 }
@@ -602,17 +609,17 @@ function renderSheet(anim){
 /* ---------- Koreksi ---------- */
 function vKoreksi(){
   const list=Object.values(S.corr).filter(c=>c.jenis!=="benar").sort((a,b)=>(a.review==="menunggu"?0:1)-(b.review==="menunggu"?0:1)||String(b.at).localeCompare(String(a.at)));
-  const f=S.kf||"semua";const shown=list.filter(c=>f==="semua"||c.review===f);
+  const f=S.kf||"semua";const shown=list.filter(c=>f==="semua"||c.jenis===f);
   $("#view").innerHTML=`<div class="scroll"><div class="wrap stagger">
-    <div class="hello" style="--i:0"><div><div class="eyebrow">${isPML()?"Periksa perbaikan PPL":"Riwayat perbaikan"}</div><h1>Perbaikan lokasi</h1></div>
-      <div class="row" style="gap:6px">${["semua","menunggu","disetujui","ditolak"].map(k=>`<button class="chip ${f===k?"on":""}" data-f="${k}" type="button">${k[0].toUpperCase()+k.slice(1)} (${k==="semua"?list.length:list.filter(c=>c.review===k).length})</button>`).join("")}</div></div>
+    <div class="hello" style="--i:0"><div><div class="eyebrow">Riwayat perbaikan</div><h1>Perbaikan lokasi</h1></div>
+      <div class="row" style="gap:6px">${[["semua","Semua"],["pindah","Lokasi diperbaiki"],["tidak_di_peta","Tidak ada di peta"]].map(([k,l])=>`<button class="chip ${f===k?"on":""}" data-f="${k}" type="button">${l} (${k==="semua"?list.length:list.filter(c=>c.jenis===k).length})</button>`).join("")}</div></div>
     ${shown.length?shown.slice(0,300).map((c,i)=>`<article class="glass corr" style="--i:${Math.min(i+1,12)}">
       <div class="corr-head"><div class="row" style="gap:10px;flex-wrap:nowrap"><span class="no new" style="font-size:14px;padding:5px 9px">${esc(+c.no||c.no)}</span><div style="min-width:0"><b>${JENIS[c.jenis]}</b><div class="muted" style="font-size:11px">${esc((S.sls[c.sls]||{}).nmsls||c.sls)} · <span class="mono">${esc(c.ub)}</span></div></div></div><span class="pill ${REV[c.review][1]}">${REV[c.review][0]}</span></div>
       ${c.note?`<div>“${esc(c.note)}”</div>`:""}
       ${c.lat!=null?`<div class="muted mono" style="font-size:11px">lokasi baru → ${(+c.lat).toFixed(6)}, ${(+c.lng).toFixed(6)}</div>`:""}
-      <div class="row between"><small class="dim">oleh ${esc(nameOf(c.by))} · ${esc(tgl(c.at))}${c.rby?" · diperiksa "+esc(nameOf(c.rby)):""}</small>
+      <div class="row between"><small class="dim">oleh ${esc(nameOf(c.by))} · ${esc(tgl(c.at))}</small>
         <div class="row" style="gap:6px"><button class="btn btn-ghost btn-sm" data-go="${esc(c.aid)}" data-s="${c.sls}" type="button">Lihat di peta</button>
-        ${c.review==="menunggu"&&canReview(c.sls)?`<button class="btn btn-ok btn-sm" data-ok="${esc(c.aid)}" type="button">Setujui</button><button class="btn btn-bad btn-sm" data-no="${esc(c.aid)}" type="button">Tolak</button>`:""}</div></div>
+        </div></div>
     </article>`).join("")+(shown.length>300?`<div class="dim" style="text-align:center">Menampilkan 300 dari ${shown.length}. Gunakan filter.</div>`:""):`<div class="glass empty" style="--i:1">${list.length?"Tidak ada perbaikan dengan status ini.":"Belum ada perbaikan. Buka Peta, ketuk nomor bangunan yang lokasinya salah, lalu pilih \"Perbaiki lokasi\"."}</div>`}
   </div></div>`;
   $("#view").querySelectorAll("[data-f]").forEach(b=>b.onclick=()=>{S.kf=b.dataset.f;vKoreksi()});
@@ -651,7 +658,7 @@ function vAdmin(){
           <label class="btn btn-ghost btn-sm filebtn">Pilih file CSV…<input type="file" accept=".csv" data-imp="alokasi"></label></div>
         <div class="glass card"><div class="row between"><b>Unduh perbaikan</b><span class="pill p-new">untuk QGIS</span></div>
           <small class="muted">GeoJSON titik perbaikan (lokasi baru) beserta assignment_id, status, dan catatan, untuk di-join ke layer asli.</small>
-          <div class="row"><button class="btn btn-grad btn-sm" type="button" id="dlAll">Semua</button><button class="btn btn-ghost btn-sm" type="button" id="dlOk">Hanya yang disetujui</button></div></div>
+          <div class="row"><button class="btn btn-grad btn-sm" type="button" id="dlAll">Unduh semua perbaikan</button></div></div>
       </div>
       <div class="glass card" id="impBox" hidden><div class="row between"><b id="impTitle">Mengimpor…</b><span class="mono dim" id="impPct"></span></div><div class="prog"><i id="impBar"></i></div><pre class="log" id="impLog"></pre></div>
     </section>
@@ -668,7 +675,7 @@ function vAdmin(){
     </section>
   </div></div>`;
   $("#view").querySelectorAll("input[data-imp]").forEach(inp=>inp.onchange=()=>{const files=[...inp.files];inp.value="";if(files.length)runImport(inp.dataset.imp,files)});
-  $("#dlAll").onclick=()=>exportKoreksi(false);$("#dlOk").onclick=()=>exportKoreksi(true);
+  $("#dlAll").onclick=()=>exportKoreksi(false);
   $("#view").querySelectorAll("[data-saveem]").forEach(b=>{const tr=b.closest("tr"),nmI=tr.querySelector('[data-f="nama"]'),emI=tr.querySelector('[data-f="email"]');
     const dirty=()=>{const d=nmI.value.trim()!==nmI.dataset.old||emI.value.trim().toLowerCase()!==emI.dataset.old;b.classList.toggle("btn-grad",d);b.classList.toggle("btn-ghost",!d)};
     [nmI,emI].forEach(i=>{i.oninput=dirty;i.onkeydown=e=>{if(e.key==="Enter")b.click()}});
@@ -841,7 +848,7 @@ async function exportKoreksi(onlyOk){
   const need=sel.map(r=>r.assignment_id),orig={};
   for(let i=0;i<need.length;i+=200){const{data,error}=await sb.from("titik").select("assignment_id,lon,lat").in("assignment_id",need.slice(i,i+200));if(error){toast("Gagal: "+error.message);return}data.forEach(t=>orig[t.assignment_id]=t)}
   const fc={type:"FeatureCollection",name:"3508050_koreksi_petugas",crs:{type:"name",properties:{name:"urn:ogc:def:crs:OGC:1.3:CRS84"}},
-    features:sel.map(r=>{const o=orig[r.assignment_id]||{};return{type:"Feature",properties:{assignment_id:r.assignment_id,unique_bang:r.unique_bang,no_bang:r.no_bang,idsubsls:r.idsubsls,jenis:r.jenis,status:r.status,catatan:r.catatan,oleh:r.oleh_email,diperiksa:r.reviewed_by,waktu:r.updated_at,lon_asal:o.lon,lat_asal:o.lat},
+    features:sel.map(r=>{const o=orig[r.assignment_id]||{};return{type:"Feature",properties:{assignment_id:r.assignment_id,unique_bang:r.unique_bang,no_bang:r.no_bang,idsubsls:r.idsubsls,jenis:r.jenis,catatan:r.catatan,oleh:r.oleh_email,waktu:r.updated_at,lon_baru:r.lon,lat_baru:r.lat,lon_asal:o.lon,lat_asal:o.lat},
       geometry:{type:"Point",coordinates:r.lon!=null?[r.lon,r.lat]:[o.lon,o.lat]}}})};
   const blob=new Blob([JSON.stringify(fc)],{type:"application/geo+json"});const a=document.createElement("a");
   a.href=URL.createObjectURL(blob);a.download=`3508050_koreksi_petugas_${new Date().toISOString().slice(0,10)}${onlyOk?"_disetujui":""}.geojson`;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1000);
