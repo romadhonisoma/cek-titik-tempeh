@@ -619,3 +619,22 @@ html body .app.on-peta .view .sheet .li-acts button.on{color:#fff!important}
 .li-acts{gap:5px}
 .ic-ok,.ic-kd{width:28px;height:28px;font-size:13px}
 .kend{margin-left:10px;min-width:0}
+/* v24: menu Koreksi berjenjang desa → dusun → SLS */
+.corr-list{display:grid;gap:6px;padding:2px 8px 10px 12px}
+.corr2{display:grid;gap:5px;padding:8px 9px;border-radius:10px;background:var(--soft);border:1px solid var(--line)}
+.corr2 b{font-size:12px}
+.group.sls3{border-radius:12px}
+.group.sls3>.group-h{padding:7px 9px}
+.group.sls3>.group-h .t b{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* v24: lebih ringan di HP / layar sentuh */
+.sls-row,.li,.corr2{content-visibility:auto;contain-intrinsic-size:auto 56px}
+@media (pointer:coarse),(max-width:959px){
+  body::after{animation:none!important;filter:none!important;opacity:.55}
+  .sls-row::before,.li::before,.group.sub::before,.btn-ghost::before,.chip:not(.on)::before,.top-actions .icon-btn::before,.pick-btn::before,.corr2::before{display:none!important}
+  .sls-row,.li,.group.sub{border-color:var(--lq-edge)!important}
+  .stagger>*{animation-duration:.35s!important;animation-delay:0s!important}
+  .glass{transition:none}
+  .on-peta .view .glass,.on-peta .view .glass.solid{backdrop-filter:blur(6px)!important;-webkit-backdrop-filter:blur(6px)!important}
+  .on-peta .nav{backdrop-filter:blur(6px)!important;-webkit-backdrop-filter:blur(6px)!important}
+}

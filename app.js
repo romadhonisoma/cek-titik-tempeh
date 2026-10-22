@@ -3,7 +3,7 @@
 const sb = supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_KEY, { auth: { persistSession: true, detectSessionInUrl: true, flowType: "pkce" } });
 const TARGET_TITIK = 36980, TARGET_SLS = 630;
 /* naikkan bersama ?v= di index.html dan nama cache di sw.js setiap rilis */
-const VERSI = "23", VERSI_TGL = "22 Okt 2026";
+const VERSI = "24", VERSI_TGL = "22 Okt 2026";
 const MOBILE = () => innerWidth < 960;
 const S = {
   me: null, view: "beranda", sel: null, scan: "wss", opac: .85, showPts: true, showBatas: true, base: "sat",
@@ -116,16 +116,23 @@ async function loadAll(){
     fetchAll(()=>sb.from("scan").select("key,idsubsls,jenis").order("key")),
     fetchAll(()=>sb.from("riwayat").select("*").order("assignment_id")).catch(()=>[])
   ]);
+  const d={sls,ppl,kor,tem,st,sc,riw};applyData(d);
+  try{localStorage.setItem("ctb-cache-"+S.me.email,JSON.stringify({v:1,t:Date.now(),me:S.me,d}))}catch(e){}
+}
+function cacheGet(email){try{const c=JSON.parse(localStorage.getItem("ctb-cache-"+email)||"null");return c&&c.v===1?c:null}catch(e){return null}}
+function applyData({sls,ppl,kor,tem,st,sc,riw}){
+  S._ci=null;S._corrVer=(S._corrVer||0)+1;
   S.sls={};sls.forEach(r=>S.sls[r.idsubsls]=r);S.slsIds=sls.map(r=>r.idsubsls);
   S.people={};ppl.forEach(r=>S.people[r.email]=r);
-  S.corr={};kor.forEach(r=>S.corr[r.assignment_id]=corrFromRow(r));
+  S.corr={};kor.forEach(r=>(S.corr[r.assignment_id]=corrFromRow(r),S._corrVer=(S._corrVer||0)+1));
   S.riw={};(riw||[]).forEach(r=>S.riw[r.assignment_id]=r);
   S.temuan={};tem.forEach(r=>(S.temuan[r.idsubsls]=S.temuan[r.idsubsls]||[]).push(r));
   S.status={};st.forEach(r=>S.status[r.idsubsls]=r);
   S.scans={};S.scanNote={};sc.forEach(r=>{(S.scans[r.idsubsls]=S.scans[r.idsubsls]||{})[r.jenis]=r.key});
 }
+function corrOf(s){if(!S._ci||S._ciN!==S._corrVer){S._ci={};for(const c of Object.values(S.corr))(S._ci[c.sls]=S._ci[c.sls]||[]).push(c);S._ciN=S._corrVer}return S._ci[s]||[]}
 function slsStat(s){
-  const r=S.sls[s]||{},cor=Object.values(S.corr).filter(c=>c.sls===s);
+  const r=S.sls[s]||{},cor=corrOf(s);
   const benar=cor.filter(isOk).length,salah=cor.filter(isKendala).length,pindah=cor.filter(c=>c.jenis==="pindah").length;
   const tem=S.temuan[s]||[],dij=tem.filter(t=>t.jawaban).length,done=!!(S.status[s]&&S.status[s].selesai);
   return {n:r.n_titik||0,benar,salah,pindah,far:r.n_far||0,tem:tem.length,dij,done,
@@ -145,7 +152,7 @@ async function loadSlsDetail(id){
   if(S.scans[id]&&!S.urls[id]){
     const rows=(await sb.from("scan").select("*").eq("idsubsls",id)).data||[];
     S.urls[id]={};
-    for(const r of rows){const{data}=await sb.storage.from("scan").createSignedUrl(r.path,6*3600);if(data)S.urls[id][r.jenis]={...r,url:data.signedUrl}}
+    for(const r of rows){const{data}=await sb.storage.from("scan").createSignedUrl(r.path,6*3600);if(data)S.urls[id][r.jenis]={...r,url:data.signedUrl+"&v="+(Date.parse(r.updated_at)||0)}}
   }
 }
 
@@ -164,6 +171,14 @@ async function afterLogin(session){
   if(S._logging)return;S._logging=true;
   try{
     const email=(session.user.email||"").toLowerCase();
+    const cache=cacheGet(email);
+    if(cache&&cache.me&&cache.me.email===email){
+      /* buka langsung dari data tersimpan, lalu segarkan dari server di belakang */
+      S.me=cache.me;applyData(cache.d);
+      const sl=scope();S.sel=store.get("ctb-sel-"+email);if(!sl.includes(S.sel))S.sel=sl[0]||null;
+      $("#boot").hidden=true;$("#login").hidden=true;const app=$("#app");app.hidden=false;app.classList.add("a-zoom");render(0);
+      S._logging=false;bgRefresh(email);return;
+    }
     const {data,error}=await sb.from("petugas").select("*").eq("email",email).maybeSingle();
     if(error)throw error;
     if(!data){await sb.auth.signOut();S._logging=false;
@@ -177,6 +192,16 @@ async function afterLogin(session){
     if(!store.get("ctb-install-seen")&&!isStandalone())setTimeout(()=>showInstall(false),1200);
   }catch(e){console.error(e);$("#boot").hidden=true;showLogin(`<b style="color:var(--bad)">Gagal memuat data:</b> ${esc(e.message||e)}`)}
   S._logging=false;
+}
+async function bgRefresh(email){
+  try{
+    const {data,error}=await sb.from("petugas").select("*").eq("email",email).maybeSingle();
+    if(error)return;
+    if(!data){try{localStorage.removeItem("ctb-cache-"+email)}catch(e){}await sb.auth.signOut();S.me=null;showLogin(`<b style="color:var(--bad)">Email ${esc(email)} belum terdaftar.</b>`);return}
+    S.me=data;await loadAll();
+    if(S.view==="peta"){if(map&&S.sel){drawPts();renderSheet();renderHead()}}
+    else if(S.view==="beranda"||S.view==="koreksi"){const sc=$("#view .scroll"),y=sc?sc.scrollTop:0;render(0);const n=$("#view .scroll");if(n)n.scrollTop=y}
+  }catch(e){console.warn(e)}
 }
 async function logout(){const app=$("#app");hideInstall();app.classList.remove("a-zoom");app.classList.add("a-out-zoom");await new Promise(r=>setTimeout(r,260));destroyMap();await sb.auth.signOut();S.me=null;app.hidden=true;app.classList.remove("a-out-zoom");showLogin()}
 function scope(){return S.slsIds}
@@ -280,7 +305,7 @@ const ImageTri=L.Layer.extend({
   initialize(url,tl,tr,bl,op){this.url=url;this.tl=L.latLng(tl[1],tl[0]);this.tr=L.latLng(tr[1],tr[0]);this.bl=L.latLng(bl[1],bl[0]);this.op=op},
   onAdd(m){this._m=m;const img=this._img=L.DomUtil.create("img","leaflet-image-layer leaflet-zoom-animated");
     img.style.transformOrigin="0 0";img.style.opacity=0;img.style.transition="opacity .5s";img.style.pointerEvents="none";img.alt="";
-    img.onload=()=>{this._reset();requestAnimationFrame(()=>img.style.opacity=this.op)};img.onerror=()=>toast("Gambar scan gagal dimuat.");img.src=this.url;(m.getPane("scan")||m.getPanes().overlayPane).appendChild(img);
+    img.onload=()=>{this._reset();requestAnimationFrame(()=>img.style.opacity=this.op)};img.onerror=()=>toast("Gambar scan gagal dimuat.");img.crossOrigin="anonymous";img.src=this.url;(m.getPane("scan")||m.getPanes().overlayPane).appendChild(img);
     m.on("zoomanim",this._anim,this);m.on("viewreset zoomend moveend move",this._reset,this)},
   onRemove(m){this._img.remove();m.off("zoomanim",this._anim,this);m.off("viewreset zoomend moveend move",this._reset,this)},
   setOpacity(o){this.op=o;if(this._img)this._img.style.opacity=o},
@@ -297,7 +322,7 @@ function inPoly(lng,lat,mp){if(!mp)return true;let inside=false;for(const poly o
 const cssv=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 function ringCol(p){const c=S.corr[p.id];if(c&&c.jenis==="benar")return "#3ddc8c";if(isKendala(c)&&c.jenis!=="tidak_di_peta")return "#e566f4";if(c)return "#ffd23f";return p.far?"#ffb648":"#ffffff"}
 const ctxFC=id=>({type:"FeatureCollection",features:S.slsIds.filter(x=>x!==id&&S.sls[x].kddesa===S.sls[id].kddesa&&S.geoms[x]).map(x=>({type:"Feature",properties:{},geometry:geomOf(x)}))});
-const BASES={sat:()=>L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",{maxNativeZoom:19,maxZoom:22,attribution:"Citra © Esri, Maxar"})};
+const BASES={sat:()=>L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",{maxNativeZoom:19,maxZoom:22,crossOrigin:true,attribution:"Citra © Esri, Maxar",keepBuffer:3,updateWhenIdle:true})};
 
 async function vPeta(){
   const sl=scope();if(!sl.length){$("#view").innerHTML=`<div class="scroll"><div class="wrap"><div class="glass empty">Belum ada SLS untuk akun ini.</div></div></div>`;return}
@@ -545,14 +570,14 @@ async function addTanpa(sls,txt){
 async function removeCorr(p){
   const{error}=await sb.from("koreksi").delete().eq("assignment_id",p.id);
   if(error){toast("Gagal: "+error.message);refreshPop(p);return}
-  delete S.corr[p.id];S.draft=null;drawPts();refreshPop(p,[p.y,p.x]);renderSheet();syncDone(p.sls).then(()=>renderSheet());toast("Perbaikan dihapus, titik kembali ke lokasi asal.");
+  delete S.corr[p.id];S._corrVer=(S._corrVer||0)+1;S.draft=null;drawPts();refreshPop(p,[p.y,p.x]);renderSheet();syncDone(p.sls).then(()=>renderSheet());toast("Perbaikan dihapus, titik kembali ke lokasi asal.");
 }
 async function save(p,d,opt={}){
   const row={assignment_id:p.id,idsubsls:p.sls,no_bang:p.no,unique_bang:p.ub,jenis:d.jenis,lon:d.jenis==="pindah"?d.lng:null,lat:d.jenis==="pindah"?d.lat:null,catatan:d.note||null,jumlah:d.jenis==="dobel"?(+d.jumlah||2):null,oleh_email:S.me.email,
     status:d.jenis==="benar"||d.jenis==="catatan"?"ok":"disetujui"};
   const {data,error}=await sb.from("koreksi").upsert(row,{onConflict:"assignment_id"}).select().single();
   if(error){toast("Gagal menyimpan: "+error.message);if(!opt.silent)refreshPop(p);return false}
-  S.corr[p.id]=corrFromRow(data);S.draft=null;drawPts();renderSheet();syncDone(p.sls).then(()=>renderSheet());
+  (S.corr[p.id]=corrFromRow(data),S._corrVer=(S._corrVer||0)+1);S.draft=null;drawPts();renderSheet();syncDone(p.sls).then(()=>renderSheet());
   toast(d.jenis==="pindah"?`Lokasi baru tersimpan · ${nameOf(S.me.email)} · ${tgl(data.updated_at)}`:d.jenis==="tidak_di_peta"?"Tersimpan: tidak ada di peta.":"Catatan tersimpan.");
   if(!opt.silent)refreshPop(p,data.lat!=null?[data.lat,data.lon]:[p.y,p.x]);
   return true;
@@ -560,7 +585,7 @@ async function save(p,d,opt={}){
 async function review(aid,status){
   const {data,error}=await sb.from("koreksi").update({status}).eq("assignment_id",aid).select().single();
   if(error){toast("Gagal: "+error.message);return false}
-  S.corr[aid]=corrFromRow(data);toast(status==="disetujui"?"Perbaikan disetujui.":"Perbaikan ditolak.");return true;
+  (S.corr[aid]=corrFromRow(data),S._corrVer=(S._corrVer||0)+1);toast(status==="disetujui"?"Perbaikan disetujui.":"Perbaikan ditolak.");return true;
 }
 function startPlace(p){
   S.draft=null;S.placing=p.id;
@@ -625,7 +650,7 @@ async function markAllOk(s){
   const ok=await confirmBox("Nyatakan semua titik sudah benar?",`${todo.length} titik yang belum dicek akan ditandai <b>Sudah benar</b>.${kd?` ${kd} titik dengan kendala tetap seperti semula.`:""}${sisa?`<br>Masih ada ${sisa} temuan admin belum dijawab.`:""}`,"Ya, semua benar");
   if(!ok)return;
   const rows=todo.map(p=>({assignment_id:p.id,idsubsls:p.sls,no_bang:p.no,unique_bang:p.ub,jenis:"benar",lon:null,lat:null,catatan:null,oleh_email:S.me.email,status:"ok"}));
-  for(let i=0;i<rows.length;i+=500){const{data,error}=await sb.from("koreksi").upsert(rows.slice(i,i+500),{onConflict:"assignment_id"}).select();if(error){toast("Gagal: "+error.message);return}data.forEach(r=>S.corr[r.assignment_id]=corrFromRow(r))}
+  for(let i=0;i<rows.length;i+=500){const{data,error}=await sb.from("koreksi").upsert(rows.slice(i,i+500),{onConflict:"assignment_id"}).select();if(error){toast("Gagal: "+error.message);return}data.forEach(r=>(S.corr[r.assignment_id]=corrFromRow(r),S._corrVer=(S._corrVer||0)+1))}
   await syncDone(s);drawPts();renderSheet();toast(`${rows.length} titik ditandai sudah benar.`);
 }
 function renderSheet(anim){
@@ -695,26 +720,47 @@ function renderSheet(anim){
 }
 
 /* ---------- Koreksi ---------- */
+function corrCard(c){return `<article class="corr2">
+      <div class="row between" style="gap:8px;flex-wrap:nowrap"><div class="row" style="gap:9px;flex-wrap:nowrap;min-width:0"><span class="no ${c.jenis==="pindah"?"new":"mag"}">${esc(+c.no||c.no)}</span><div style="min-width:0"><b>${esc(jenisTxt(c))}</b><div class="dim" style="font-size:10.5px">oleh ${esc(nameOf(c.by))} · ${esc(tgl(c.at))}</div></div></div>
+      <button class="btn btn-ghost btn-sm" data-go="${esc(c.aid)}" data-s="${c.sls}" type="button">Lihat di peta</button></div>
+      ${c.note?`<div style="font-size:12px">“${esc(c.note)}”</div>`:""}
+      ${c.lat!=null?`<div class="muted mono" style="font-size:10.5px">lokasi baru → ${(+c.lat).toFixed(6)}, ${(+c.lng).toFixed(6)}</div>`:""}
+    </article>`}
 function vKoreksi(){
-  const list=Object.values(S.corr).filter(c=>c.jenis!=="benar").sort((a,b)=>(a.review==="menunggu"?0:1)-(b.review==="menunggu"?0:1)||String(b.at).localeCompare(String(a.at)));
+  const list=Object.values(S.corr).filter(c=>c.jenis!=="benar");
+  const F=[["semua","Semua"],["pindah","Lokasi diperbaiki"],["tidak_di_peta","Tidak ada di peta scan"],["dobel","Dobel"],["catatan","Catatan / kendala"]];
   const f=S.kf||"semua";const shown=list.filter(c=>f==="semua"||c.jenis===f);
+  const by={};shown.forEach(c=>(by[c.sls]=by[c.sls]||[]).push(c));
+  Object.values(by).forEach(a=>a.sort((x,y)=>String(x.no).localeCompare(String(y.no))));
+  const ids=Object.keys(by).filter(id=>S.sls[id]).sort();
+  const groups=groupsFor(ids);const KO=S.kopen=S.kopen||{};if(groups.length===1)KO[groups[0].k]=true;
+  const cnt=a=>a.reduce((n,id)=>n+by[id].length,0);
+  const slsHtml=d=>d.ids.map(id=>{const k="s|"+id,open=!!KO[k],sl=S.sls[id];
+    return `<section class="group sub sls3 ${open?"open":""}" data-g="${esc(k)}"><button class="group-h" type="button" aria-expanded="${open}"><div class="t"><b>${id.slice(10,14)}${id.slice(14)!=="00"?"."+id.slice(14):""} · ${esc(shortNm(sl.nmsls))}</b><small class="muted">${by[id].length} perbaikan/kendala</small></div><span class="icon-btn chev">${ICON.down}</span></button>
+      <div class="group-body"><div><div class="corr-list" data-ids="${id}">${open?by[id].map(corrCard).join(""):""}</div></div></div></section>`}).join("");
+  const dusHtml=g=>g.dusun.map(d=>{const k="d|"+d.k,open=!!KO[k];
+    return `<section class="group sub ${open?"open":""}" data-g="${esc(k)}"><button class="group-h" type="button" aria-expanded="${open}"><div class="t"><b>${esc(d.title)}</b><small class="muted">${d.ids.length} SLS · ${cnt(d.ids)} perbaikan/kendala</small></div><span class="icon-btn chev">${ICON.down}</span></button>
+      <div class="group-body"><div><div class="dusun-list">${open?slsHtml(d):""}</div></div></div></section>`}).join("");
   $("#view").innerHTML=`<div class="scroll"><div class="wrap stagger">
-    <div class="hello" style="--i:0"><div><div class="eyebrow">Riwayat perbaikan</div><h1>Perbaikan lokasi</h1></div>
-      <div class="row" style="gap:6px">${[["semua","Semua"],["pindah","Lokasi diperbaiki"],["tidak_di_peta","Tidak ada di peta"],["catatan","Catatan"]].map(([k,l])=>`<button class="chip ${f===k?"on":""}" data-f="${k}" type="button">${l} (${k==="semua"?list.length:list.filter(c=>c.jenis===k).length})</button>`).join("")}</div></div>
-    ${shown.length?shown.slice(0,300).map((c,i)=>`<article class="glass corr" style="--i:${Math.min(i+1,12)}">
-      <div class="corr-head"><div class="row" style="gap:10px;flex-wrap:nowrap"><span class="no new" style="font-size:14px;padding:5px 9px">${esc(+c.no||c.no)}</span><div style="min-width:0"><b>${JENIS[c.jenis]}</b><div class="muted" style="font-size:11px">${esc((S.sls[c.sls]||{}).nmsls||c.sls)} · <span class="mono">${esc(c.ub)}</span></div></div></div><span class="pill ${REV[c.review][1]}">${REV[c.review][0]}</span></div>
-      ${c.note?`<div>“${esc(c.note)}”</div>`:""}
-      ${c.lat!=null?`<div class="muted mono" style="font-size:11px">lokasi baru → ${(+c.lat).toFixed(6)}, ${(+c.lng).toFixed(6)}</div>`:""}
-      <div class="row between"><small class="dim">oleh ${esc(nameOf(c.by))} · ${esc(tgl(c.at))}</small>
-        <div class="row" style="gap:6px"><button class="btn btn-ghost btn-sm" data-go="${esc(c.aid)}" data-s="${c.sls}" type="button">Lihat di peta</button>
-        </div></div>
-    </article>`).join("")+(shown.length>300?`<div class="dim" style="text-align:center">Menampilkan 300 dari ${shown.length}. Gunakan filter.</div>`:""):`<div class="glass empty" style="--i:1">${list.length?"Tidak ada perbaikan dengan status ini.":"Belum ada perbaikan. Buka Peta, ketuk nomor bangunan yang lokasinya salah, lalu pilih \"Perbaiki lokasi\"."}</div>`}
+    <div class="hello" style="--i:0"><div><div class="eyebrow">Riwayat perbaikan</div><h1>Perbaikan lokasi & kendala</h1></div></div>
+    <div class="row" style="gap:6px;--i:1">${F.map(([k,l])=>`<button class="chip ${f===k?"on":""}" data-f="${k}" type="button">${l} (${k==="semua"?list.length:list.filter(c=>c.jenis===k).length})</button>`).join("")}</div>
+    <div id="kgroups" style="--i:2;display:grid;gap:8px">${groups.length?groups.map(g=>{const k="g|"+g.k,open=!!KO[k]||!!KO[g.k];
+      return `<section class="glass group ${open?"open":""}" data-g="${esc(k)}"><button class="group-h" type="button" aria-expanded="${open}"><div class="t"><b>${esc(g.title)}</b><small class="muted">${g.ids.length} SLS · ${cnt(g.ids)} perbaikan/kendala</small></div><span class="icon-btn chev">${ICON.down}</span></button>
+        <div class="group-body"><div><div class="dusun-list">${open?dusHtml(g):""}</div></div></div></section>`}).join(""):`<div class="glass empty">${list.length?"Tidak ada data dengan pilihan ini.":"Belum ada perbaikan. Buka Peta, ketuk nomor bangunan, lalu pilih \"Perbaiki lokasi\" atau tekan ! di daftar."}</div>`}</div>
   </div></div>`;
   $("#view").querySelectorAll("[data-f]").forEach(b=>b.onclick=()=>{S.kf=b.dataset.f;vKoreksi()});
-  $("#view").querySelectorAll("[data-go]").forEach(b=>b.onclick=()=>{setSel(b.dataset.s);S.focus=b.dataset.go;S.draft=null;S.detail=null;S._view=null;go("peta")});
-  $("#view").querySelectorAll("[data-ok]").forEach(b=>b.onclick=async()=>{b.disabled=true;if(await review(b.dataset.ok,"disetujui"))vKoreksi()});
-  $("#view").querySelectorAll("[data-no]").forEach(b=>b.onclick=async()=>{b.disabled=true;if(await review(b.dataset.no,"ditolak"))vKoreksi()});
+  const box=$("#kgroups");
+  box.onclick=e=>{
+    const go=e.target.closest("[data-go]");if(go){setSel(go.dataset.s);S.focus=go.dataset.go;S.draft=null;S.detail=null;S._view=null;go_("peta");return}
+    const h=e.target.closest(".group-h");if(!h)return;const sec=h.parentElement,k=sec.dataset.g,inner=sec.querySelector(".group-body .dusun-list,.group-body .corr-list");
+    if(inner&&!inner.innerHTML){
+      if(k.startsWith("g|")){inner.innerHTML=dusHtml(groups.find(g=>"g|"+g.k===k))}
+      else if(k.startsWith("d|")){let dd;groups.some(g=>dd=g.dusun.find(d=>"d|"+d.k===k));inner.innerHTML=slsHtml(dd)}
+      else if(k.startsWith("s|")){inner.innerHTML=by[k.slice(2)].map(corrCard).join("")}}
+    KO[k]=!KO[k];h.setAttribute("aria-expanded",KO[k]);requestAnimationFrame(()=>sec.classList.toggle("open",KO[k]));
+  };
 }
+const go_=v=>go(v);
 
 /* ---------- Admin ---------- */
 function vAdmin(){
@@ -852,7 +898,7 @@ async function impTitik(files){
   for(let i=0;i<keepNote.length;i+=200){const{error}=await sb.from("koreksi").update({jenis:"catatan",lon:null,lat:null}).in("assignment_id",keepNote.slice(i,i+200));if(error)throw error}
   for(let i=0;i<drop.length;i+=200){const{error}=await sb.from("koreksi").delete().in("assignment_id",drop.slice(i,i+200));if(error)throw error}
   IMP.log(`Perbaikan lokasi yang sudah masuk file baru: ${fmt(doneFix.length)} (garis kuning dihapus; ${fmt(keepNote.length)} catatannya tetap disimpan)`);
-  const nk=await fetchAll(()=>sb.from("koreksi").select("*").order("assignment_id"));S.corr={};nk.forEach(r=>S.corr[r.assignment_id]=corrFromRow(r));S.pts={};
+  const nk=await fetchAll(()=>sb.from("koreksi").select("*").order("assignment_id"));S._corrVer=(S._corrVer||0)+1;S.corr={};nk.forEach(r=>(S.corr[r.assignment_id]=corrFromRow(r),S._corrVer=(S._corrVer||0)+1));S.pts={};
   const lost=Object.keys(S.corr).filter(a=>!ids.has(a));
   IMP.log(lost.length?`Perhatian: ${lost.length} perbaikan merujuk titik yang sudah tidak ada.`:"Semua perbaikan petugas masih menempel ✓");
   IMP.set("Impor titik selesai ✓",1);toast("Impor titik selesai.");
