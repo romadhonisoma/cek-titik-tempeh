@@ -3,7 +3,7 @@
 const sb = supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_KEY, { auth: { persistSession: true, detectSessionInUrl: true, flowType: "pkce" } });
 const TARGET_TITIK = 36980, TARGET_SLS = 630;
 /* naikkan bersama ?v= di index.html dan nama cache di sw.js setiap rilis */
-const VERSI = "25", VERSI_TGL = "24 Okt 2026";
+const VERSI = "26", VERSI_TGL = "24 Okt 2026";
 const MOBILE = () => innerWidth < 960;
 const S = {
   me: null, view: "beranda", sel: null, scan: "wss", opac: .85, showPts: true, showBatas: true, base: "sat",
@@ -606,7 +606,11 @@ function renderBanner(){
 }
 function crossMode(){return true}
 document.addEventListener("keydown",e=>{
-  if(!S.placing||e.repeat)return;const t=e.target;if(t&&(t.tagName==="INPUT"||t.tagName==="TEXTAREA"||t.isContentEditable))return;
+  if(e.repeat)return;const t=e.target;if(t&&(t.tagName==="INPUT"||t.tagName==="TEXTAREA"||t.tagName==="SELECT"||t.isContentEditable))return;
+  if(!S.placing){
+    if(e.key!=="Enter"||!map||!popup||!popFor||(t&&t.tagName==="BUTTON"))return;
+    const el=popup.getElement(),b=el&&el.querySelector('[data-act="fix"]');if(b&&!b.disabled){e.preventDefault();b.click()}
+    return}
   if(e.key==="Enter"){const b=$("#okPlace");if(b&&!b.disabled){e.preventDefault();b.click()}}
   else if(e.key==="Escape"){const b=$("#cancelPlace");if(b){e.preventDefault();b.click()}}
 });
