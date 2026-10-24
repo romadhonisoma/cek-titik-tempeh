@@ -3,7 +3,7 @@
 const sb = supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_KEY, { auth: { persistSession: true, detectSessionInUrl: true, flowType: "pkce" } });
 const TARGET_TITIK = 36980, TARGET_SLS = 630;
 /* naikkan bersama ?v= di index.html dan nama cache di sw.js setiap rilis */
-const VERSI = "24", VERSI_TGL = "22 Okt 2026";
+const VERSI = "25", VERSI_TGL = "24 Okt 2026";
 const MOBILE = () => innerWidth < 960;
 const S = {
   me: null, view: "beranda", sel: null, scan: "wss", opac: .85, showPts: true, showBatas: true, base: "sat",
@@ -600,11 +600,16 @@ function renderBanner(){
   const wrap=map&&map.getContainer().parentElement;
   if(!S.placing){wrap&&wrap.classList.remove("place-mode","cross");if(!el.hidden){el.style.transition="opacity .2s,transform .2s var(--ease-in)";el.style.opacity="0";el.style.transform="translate(-50%,-14px)";setTimeout(()=>{el.hidden=true;el.style.cssText=""},200)}return}
   const p=ptById(S.placing);el.style.cssText="";el.hidden=false;wrap.classList.add("place-mode","cross");
-  el.innerHTML=`<span class="no new">${esc(+p.no||p.no)}</span><div style="flex:1;min-width:0"><b>Geser peta sampai tanda ＋ tepat di bangunan</b><div class="muted" style="font-size:11px">${MOBILE()?"Perbesar peta agar pas":"Bisa juga klik langsung di peta"}, lalu tekan Simpan</div></div><div class="row" style="gap:6px;flex-wrap:nowrap"><button class="btn btn-ghost btn-sm" id="cancelPlace" type="button">Batal</button><button class="btn btn-grad btn-sm" id="okPlace" type="button">Simpan</button></div>`;
+  el.innerHTML=`<span class="no new">${esc(+p.no||p.no)}</span><div style="flex:1;min-width:0"><b>Geser peta sampai tanda ＋ tepat di bangunan</b><div class="muted" style="font-size:11px">${MOBILE()?"Perbesar peta agar pas, lalu tekan Simpan":"Bisa juga klik langsung di peta, lalu tekan Simpan / Enter (Esc = batal)"}</div></div><div class="row" style="gap:6px;flex-wrap:nowrap"><button class="btn btn-ghost btn-sm" id="cancelPlace" type="button">Batal</button><button class="btn btn-grad btn-sm" id="okPlace" type="button">Simpan</button></div>`;
   $("#cancelPlace").onclick=()=>{S.placing=null;renderBanner();drawPts()};
   $("#okPlace").onclick=async e=>{e.currentTarget.disabled=true;await placeAt(map.getCenter())};
 }
 function crossMode(){return true}
+document.addEventListener("keydown",e=>{
+  if(!S.placing||e.repeat)return;const t=e.target;if(t&&(t.tagName==="INPUT"||t.tagName==="TEXTAREA"||t.isContentEditable))return;
+  if(e.key==="Enter"){const b=$("#okPlace");if(b&&!b.disabled){e.preventDefault();b.click()}}
+  else if(e.key==="Escape"){const b=$("#cancelPlace");if(b){e.preventDefault();b.click()}}
+});
 function placeTap(latlng){map.panTo(latlng,{animate:!MOBILE()?false:true,duration:.3})}
 async function placeAt(latlng){
   if(!inPoly(latlng.lng,latlng.lat,geomOf(petaOf(S.sel)))){toast("Tanda ＋ di luar batas SLS. Geser ke dalam garis merah.");const b=$("#okPlace");if(b)b.disabled=false;return}
@@ -643,8 +648,16 @@ async function syncDone(s){
   const{data,error}=await sb.from("sls_status").upsert({idsubsls:s,selesai:all,oleh:S.me.email,at:new Date().toISOString()}).select().single();
   if(!error){S.status[s]=data;if(all)toast("Semua titik sudah benar — SLS ini dinyatakan beres.",3200)}
 }
+async function markEmptyOk(s,on){
+  const ok=await confirmBox(on?"Nyatakan SLS ini sudah benar?":"Batalkan status beres?",on?"SLS ini tidak punya titik bangunan (mis. sawah/kebun). Pastikan di peta scan memang tidak ada bangunan.":"SLS ini akan kembali berstatus <b>Belum dicek</b>.",on?"Ya, sudah benar":"Ya, batalkan");
+  if(!ok)return;
+  const{data,error}=await sb.from("sls_status").upsert({idsubsls:s,selesai:on,oleh:S.me.email,at:new Date().toISOString()}).select().single();
+  if(error){toast("Gagal: "+error.message);return}
+  S.status[s]=data;renderSheet();toast(on?"SLS tanpa bangunan dinyatakan sudah benar.":"Status beres dibatalkan.");
+}
 async function markAllOk(s){
-  const pts=S.pts[s]||[],todo=pts.filter(p=>!S.corr[p.id]),kd=pts.filter(p=>isKendala(S.corr[p.id])).length;
+  const pts=S.pts[s]||[];if(!pts.length)return markEmptyOk(s,true);
+  const todo=pts.filter(p=>!S.corr[p.id]),kd=pts.filter(p=>isKendala(S.corr[p.id])).length;
   if(!todo.length&&kd){toast(`Masih ada ${kd} titik dengan kendala. Ganti ke ✓ jika sudah benar.`,3800);return}
   const sisa=(S.temuan[s]||[]).filter(t=>!t.jawaban).length;
   const ok=await confirmBox("Nyatakan semua titik sudah benar?",`${todo.length} titik yang belum dicek akan ditandai <b>Sudah benar</b>.${kd?` ${kd} titik dengan kendala tetap seperti semula.`:""}${sisa?`<br>Masih ada ${sisa} temuan admin belum dijawab.`:""}`,"Ya, semua benar");
@@ -681,7 +694,7 @@ function renderSheet(anim){
       <div class="${anim==="tab"?(S.tab==="temuan"?"a-inR":"a-inL"):""}">${S.tab==="titik"?(list.length?`<div class="list">${list.map(p=>liHtml(p,ed)).join("")}</div>`:`<div class="empty">SLS ini tidak punya titik bangunan.</div>`):(tanpaForm(ed)+(tem.length?`<div class="list">${tem.map(x=>{const lab=TEM[x.jenis]||[x.jenis,"mag",""];
         return `<div class="li" style="display:grid;gap:6px"><div class="row" style="gap:9px;flex-wrap:nowrap"><span class="no ${lab[1]}">${esc(+x.no_bang||x.no_bang)}</span><span class="txt"><b>${lab[0]}</b><small>${esc(x.keterangan||lab[2])}</small></span></div>
          ${x.jawaban?`<div class="row between"><small class="muted">Jawaban: ${esc(x.jawaban)} — ${esc(nameOf(x.dijawab_oleh))}</small><button class="link" data-reans="${x.id}" type="button" style="font-size:11px;color:var(--muted);text-decoration:underline">ubah</button></div>`:`<div class="row" style="gap:6px;flex-wrap:nowrap"><input class="field ans" data-i="${x.id}" placeholder="Jawaban singkat" style="flex:1;min-width:0"><button class="btn btn-grad btn-sm" data-ans="${x.id}" type="button">Kirim</button></div>`}</div>`}).join("")}</div>`:`<div class="empty">Tidak ada temuan admin untuk SLS ini.</div>`))}</div>
-      ${ed?`<button class="btn ${t.done?"btn-done":"btn-grad"}" id="doneBtn" type="button" style="width:100%">${t.done?"✓ SLS ini sudah saya cek, semua benar":"Nyatakan SLS ini sudah beres (semua benar)"}</button>`:(t.done?`<div class="pill p-ok" style="justify-self:center">✓ SLS ini sudah dicek, semua benar</div>`:"")}`;
+      ${ed?`<button class="btn ${t.done?"btn-done":"btn-grad"}" id="doneBtn" type="button" style="width:100%">${t.done?(pts.length?"✓ SLS ini sudah saya cek, semua benar":"✓ SLS ini sudah benar (tidak ada bangunan)"):(pts.length?"Nyatakan SLS ini sudah beres (semua benar)":"SLS ini sudah benar (tidak ada bangunan)")}</button>`:(t.done?`<div class="pill p-ok" style="justify-self:center">✓ SLS ini sudah dicek, ${pts.length?"semua benar":"tidak ada bangunan"}</div>`:"")}`;
     }
   }
   const ob=sh.querySelector(".sheet-body"),keep=ob&&!anim&&S._shKey===s+"|"+S.tab+"|"+(S.detail||"")?ob.scrollTop:0;
@@ -702,7 +715,7 @@ function renderSheet(anim){
   sh.querySelectorAll("[data-reans]").forEach(b=>b.onclick=()=>{const arr=S.temuan[s];const x=arr.find(y=>y.id===+b.dataset.reans);x._old=x.jawaban;x.jawaban=null;renderSheet()});
   const db=$("#doneBtn");if(db)db.onclick=async()=>{
     if(!canEdit(s)){toast("SLS ini hanya bisa dilihat.");return}
-    if(t.done){toast("SLS ini sudah beres. Jika ada kendala, tekan ! pada nomor bangunannya.",3500);return}
+    if(t.done){if(!pts.length){await markEmptyOk(s,false);return}toast("SLS ini sudah beres. Jika ada kendala, tekan ! pada nomor bangunannya.",3500);return}
     await markAllOk(s);
   };
   sh.querySelectorAll("[data-ok]").forEach(b=>b.onclick=async ev=>{ev.stopPropagation();const p=ptById(b.dataset.ok),c=S.corr[p.id];
@@ -763,6 +776,28 @@ function vKoreksi(){
 const go_=v=>go(v);
 
 /* ---------- Admin ---------- */
+const fmtB=b=>b>=1073741824?(b/1073741824).toFixed(2)+" GB":b>=1048576?(b/1048576).toFixed(1)+" MB":Math.round(b/1024)+" KB";
+async function loadMem(){
+  const box=$("#memBox");if(!box)return;
+  const{data:m,error}=await sb.rpc("status_memori");if(!$("#memBox"))return;
+  if(error){box.innerHTML=`<small class="muted">Gagal memuat: ${esc(error.message)}</small>`;return}
+  const bar=(lab,v,max,sub)=>{const pc=Math.min(100,v/max*100),col=pc>=90?"var(--bad)":pc>=70?"#ffb648":"var(--ok)";
+    return `<div style="display:grid;gap:5px"><div class="row between"><b style="font-size:13px">${lab}</b><span class="mono" style="font-size:12px">${fmtB(v)} / ${fmtB(max)} · ${pc.toFixed(1)}%</span></div>
+      <div class="prog"><i style="width:${pc}%;background:${col}"></i></div>${sub?`<small class="muted">${sub}</small>`:""}</div>`};
+  const tb=(m.tabel||[]).slice(0,4).map(t=>`${esc(t.t)} ${fmtB(t.b)}`).join(" · ");
+  box.innerHTML=`<div style="display:grid;gap:12px">
+    ${bar("Database",m.db,524288000,"Terbesar: "+tb)}
+    ${bar("Penyimpanan file (scan)",m.scan+m.lain,1073741824,`${fmt(m.scan_n)} gambar scan · upload ulang file dengan nama sama otomatis menimpa yang lama`)}
+    <div class="row between" style="gap:8px"><small class="muted">${m.yatim_n?`<b>${fmt(m.yatim_n)}</b> gambar scan tidak terpakai (${fmtB(m.yatim)}), mis. dari SLS yang sudah tidak ada.`:"Tidak ada gambar scan yang tidak terpakai ✓"}</small>
+      <div class="row" style="gap:6px">${m.yatim_n?`<button class="btn btn-bad btn-sm" id="memClean" type="button">Hapus yang tidak terpakai</button>`:""}<button class="btn btn-ghost btn-sm" id="memRef" type="button">Muat ulang</button></div></div>
+  </div>`;
+  $("#memRef").onclick=()=>{box.innerHTML='<small class="muted">Memuat…</small>';loadMem()};
+  const cl=$("#memClean");if(cl)cl.onclick=async()=>{
+    if(!await confirmBox("Hapus gambar scan tidak terpakai?",`${fmt(m.yatim_n)} gambar (${fmtB(m.yatim)}) yang tidak dipakai SLS mana pun akan dihapus permanen.`,"Ya, hapus"))return;
+    cl.disabled=true;const{data:paths,error:e1}=await sb.rpc("scan_yatim");if(e1){toast("Gagal: "+e1.message);cl.disabled=false;return}
+    for(let i=0;i<paths.length;i+=100){const{error}=await sb.storage.from("scan").remove(paths.slice(i,i+100));if(error){toast("Gagal: "+error.message);break}}
+    toast(`${fmt(paths.length)} gambar scan dihapus.`);loadMem()};
+}
 function vAdmin(){
   if(!isAdmin()){go("beranda");return}
   const pml=Object.values(S.people).filter(v=>v.peran==="PML").sort((a,b)=>a.nama.localeCompare(b.nama));
@@ -797,6 +832,10 @@ function vAdmin(){
       <div class="glass card" id="impBox" hidden><div class="row between"><b id="impTitle">Mengimpor…</b><span class="mono dim" id="impPct"></span></div><div class="prog"><i id="impBar"></i></div><pre class="log" id="impLog"></pre></div>
     </section>
     <section style="display:grid;gap:10px;--i:2">
+      <div class="section-h"><h2>Status memori Supabase</h2><small class="muted">Batas paket gratis: database 500 MB · penyimpanan file 1 GB</small></div>
+      <div class="glass card" id="memBox"><small class="muted">Memuat…</small></div>
+    </section>
+    <section style="display:grid;gap:10px;--i:2">
       <div class="section-h"><h2>Admin & koordinator</h2></div>
       <div class="glass card">${adm.map(a=>`<div class="row between"><span><b>${esc(a.nama)}</b> <span class="dim mono">${esc(a.email)}</span></span>${a.email!==S.me.email?`<button class="btn btn-bad btn-sm" data-unadm="${esc(a.email)}" type="button">Cabut admin</button>`:`<span class="pill p-info">Anda</span>`}</div>`).join("")}
         <div class="row" style="flex-wrap:nowrap"><input class="field" id="admEmail" placeholder="email koordinator" style="flex:1"><input class="field" id="admName" placeholder="nama" style="flex:1"><button class="btn btn-grad btn-sm" id="addAdm" type="button">Tambah admin</button></div></div>
@@ -809,7 +848,7 @@ function vAdmin(){
     </section>
   </div></div>`;
   $("#view").querySelectorAll("input[data-imp]").forEach(inp=>inp.onchange=()=>{const files=[...inp.files];inp.value="";if(files.length)runImport(inp.dataset.imp,files)});
-  $("#dlAll").onclick=()=>exportKoreksi(false);$("#dlTem").onclick=exportTemuan;
+  $("#dlAll").onclick=()=>exportKoreksi(false);$("#dlTem").onclick=exportTemuan;loadMem();
   $("#view").querySelectorAll("[data-akses]").forEach(sel=>sel.onchange=async()=>{
     const em=sel.dataset.akses,v=sel.value||null;sel.disabled=true;
     const{error}=await sb.from("petugas").update({akses:v}).eq("email",em);sel.disabled=false;
@@ -894,10 +933,10 @@ async function impTitik(files){
   const doneFix=(await fetchAll(()=>sb.from("koreksi").select("*").eq("jenis","pindah").order("assignment_id"))).filter(r=>moved.has(r.assignment_id));
   const now=new Date().toISOString(),rw=doneFix.map(r=>({assignment_id:r.assignment_id,idsubsls:r.idsubsls,jenis:r.jenis,lon:r.lon,lat:r.lat,catatan:r.catatan,oleh_email:r.oleh_email,waktu:r.updated_at,digabung_at:now}));
   for(let i=0;i<rw.length;i+=500){const{error}=await sb.from("riwayat").upsert(rw.slice(i,i+500),{onConflict:"assignment_id"});if(error)throw error}
-  const keepNote=doneFix.filter(r=>r.catatan).map(r=>r.assignment_id),drop=doneFix.filter(r=>!r.catatan).map(r=>r.assignment_id);
-  for(let i=0;i<keepNote.length;i+=200){const{error}=await sb.from("koreksi").update({jenis:"catatan",lon:null,lat:null}).in("assignment_id",keepNote.slice(i,i+200));if(error)throw error}
-  for(let i=0;i<drop.length;i+=200){const{error}=await sb.from("koreksi").delete().in("assignment_id",drop.slice(i,i+200));if(error)throw error}
-  IMP.log(`Perbaikan lokasi yang sudah masuk file baru: ${fmt(doneFix.length)} (garis kuning dihapus; ${fmt(keepNote.length)} catatannya tetap disimpan)`);
+  // titik yang sudah diperbaiki tetap dihitung benar (centang hijau); catatannya tetap disimpan
+  const fixIds=doneFix.map(r=>r.assignment_id);
+  for(let i=0;i<fixIds.length;i+=200){const{error}=await sb.from("koreksi").update({jenis:"benar",lon:null,lat:null,status:"ok"}).in("assignment_id",fixIds.slice(i,i+200));if(error)throw error}
+  IMP.log(`Perbaikan lokasi yang sudah masuk file baru: ${fmt(doneFix.length)} (garis kuning dihapus, titik tetap tercentang benar)`);
   const nk=await fetchAll(()=>sb.from("koreksi").select("*").order("assignment_id"));S._corrVer=(S._corrVer||0)+1;S.corr={};nk.forEach(r=>(S.corr[r.assignment_id]=corrFromRow(r),S._corrVer=(S._corrVer||0)+1));S.pts={};
   const lost=Object.keys(S.corr).filter(a=>!ids.has(a));
   IMP.log(lost.length?`Perhatian: ${lost.length} perbaikan merujuk titik yang sudah tidak ada.`:"Semua perbaikan petugas masih menempel ✓");
