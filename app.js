@@ -3,7 +3,7 @@
 const sb = supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_KEY, { auth: { persistSession: true, detectSessionInUrl: true, flowType: "pkce" } });
 const TARGET_TITIK = 36980, TARGET_SLS = 630;
 /* naikkan bersama ?v= di index.html dan nama cache di sw.js setiap rilis */
-const VERSI = "26", VERSI_TGL = "24 Okt 2026";
+const VERSI = "27", VERSI_TGL = "24 Okt 2026";
 const MOBILE = () => innerWidth < 960;
 const S = {
   me: null, view: "beranda", sel: null, scan: "wss", opac: .85, showPts: true, showBatas: true, base: "sat",
@@ -100,10 +100,10 @@ const me=()=>S.me;
 const isAdmin=()=>!!(S.me&&S.me.admin);
 const isPML=()=>S.me&&(S.me.peran==="PML"||S.me.admin);
 const nameOf=e=>(S.people[e]&&S.people[e].nama)||e||"—";
-const AKSES={"":"—",lihat_desa:"Lihat seluruh desa",edit_desa:"Lihat & edit seluruh desa",lihat_kec:"Lihat seluruh kecamatan",lihat_kec_edit_desa:"Lihat sekecamatan, edit sedesa"};
+const AKSES={"":"—",lihat_desa:"Lihat seluruh desa",edit_desa:"Lihat & edit seluruh desa",lihat_kec:"Lihat seluruh kecamatan",lihat_kec_edit_desa:"Lihat sekecamatan, edit sedesa",edit_kec:"Lihat & edit seluruh kecamatan"};
 function isBase(id){const s=S.sls[id];if(!s||!S.me)return false;return s.ppl_email===S.me.email||!!(S.people[s.ppl_email]&&S.people[s.ppl_email].pml_email===S.me.email)}
 function myDesa(){if(S._md&&S._md.k===S.slsIds.length)return S._md.v;const v=new Set(S.slsIds.filter(isBase).map(id=>S.sls[id].kddesa));S._md={k:S.slsIds.length,v};return v}
-function canEdit(id){if(!S.me)return false;if(isAdmin()||isBase(id))return true;const a=S.me.akses||"";return (a==="edit_desa"||a==="lihat_kec_edit_desa")&&!!S.sls[id]&&myDesa().has(S.sls[id].kddesa)}
+function canEdit(id){if(!S.me)return false;if(isAdmin()||isBase(id))return true;const a=S.me.akses||"";if(a==="edit_kec")return !!S.sls[id];return (a==="edit_desa"||a==="lihat_kec_edit_desa")&&!!S.sls[id]&&myDesa().has(S.sls[id].kddesa)}
 function canReview(id){if(isAdmin())return true;const s=S.sls[id];return !!(s&&S.people[s.ppl_email]&&S.people[s.ppl_email].pml_email===S.me.email)}
 function corrFromRow(r){return {aid:r.assignment_id,sls:r.idsubsls,no:r.no_bang,ub:r.unique_bang,jenis:r.jenis,lat:r.lat,lng:r.lon,note:r.catatan||"",by:r.oleh_email,at:r.updated_at||r.created_at,review:r.status,rby:r.reviewed_by,jumlah:r.jumlah}}
 async function loadAll(){
@@ -250,11 +250,11 @@ function vBeranda(){
   const u=me(),sl=scope(),st=sl.map(slsStat);
   const tot=st.reduce((a,b)=>({n:a.n+b.n,benar:a.benar+b.benar,salah:a.salah+b.salah,pindah:a.pindah+b.pindah,done:a.done+(b.done?1:0),tem:a.tem+b.tem,dij:a.dij+b.dij,far:a.far+b.far}),{n:0,benar:0,salah:0,pindah:0,done:0,tem:0,dij:0,far:0});
   const menunggu=Object.values(S.corr).filter(c=>c.jenis!=="benar"&&c.review==="menunggu").length;
-  const scopeTxt=isAdmin()?"Seluruh Kecamatan Tempeh":((S.me.peran==="PML"?"Semua SLS PPL Anda":"Semua SLS tugas Anda")+(S.me.akses?" + akses khusus: "+AKSES[S.me.akses].toLowerCase():""));
+  const scopeTxt=isAdmin()?"Seluruh Kecamatan Tempeh":S.me.akses==="edit_kec"?"Seluruh Kecamatan Tempeh (lihat & edit)":((S.me.peran==="PML"?"Semua SLS PPL Anda":"Semua SLS tugas Anda")+(S.me.akses?" + akses khusus: "+AKSES[S.me.akses].toLowerCase():""));
   const groups=groupsFor(sl);if(groups.length===1)S.open[groups[0].k]=true;
   const nBatas=sl.filter(id=>S.sls[id].berubah_batas).length;
   $("#view").innerHTML=`<div class="scroll"><div class="wrap stagger">
-    <div class="hello" style="--i:0"><div><div class="eyebrow">${esc(u.admin&&u.peran!=="ADMIN"?u.peran+" · Admin":u.peran)}</div><h1>Halo, ${esc((u.nama||"").split(" ")[0])}</h1></div>
+    <div class="hello" style="--i:0"><div><div class="eyebrow">${esc(u.peran==="KOORDINATOR"?"Koordinator":u.admin&&u.peran!=="ADMIN"?u.peran+" · Admin":u.peran)}</div><h1>Halo, ${esc((u.nama||"").split(" ")[0])}</h1></div>
       <div class="top-actions"><button class="icon-btn" id="rfBtn" type="button" aria-label="Muat ulang data" title="Muat ulang data">${ICON.refresh}</button><button class="btn btn-sm" id="insBtn" type="button">${small(ICON.install)}Pasang</button><button class="icon-btn theme-toggle" type="button"></button></div></div>
     <div class="kpis" style="--i:1">
       <div class="glass kpi"><small>SLS</small><b class="mono">${fmt(sl.length)}</b><small>${tot.done} beres · <span style="color:var(--cyan)">${nBatas} berubah batas</span></small></div>
@@ -805,7 +805,7 @@ async function loadMem(){
 function vAdmin(){
   if(!isAdmin()){go("beranda");return}
   const pml=Object.values(S.people).filter(v=>v.peran==="PML").sort((a,b)=>a.nama.localeCompare(b.nama));
-  const adm=Object.values(S.people).filter(v=>v.admin);
+  const adm=Object.values(S.people).filter(v=>v.admin),kor=Object.values(S.people).filter(v=>v.akses==="edit_kec").sort((a,b)=>a.nama.localeCompare(b.nama));
   const rows=pml.flatMap(pv=>[pv,...Object.values(S.people).filter(v=>v.peran==="PPL"&&v.pml_email===pv.email).sort((a,b)=>a.nama.localeCompare(b.nama))]);
   const nSlsOf=e=>S.slsIds.filter(id=>S.sls[id].ppl_email===e||(S.people[S.sls[id].ppl_email]||{}).pml_email===e).length;
   const totT=S.slsIds.reduce((a,id)=>a+(S.sls[id].n_titik||0),0),nScan=Object.values(S.scans).reduce((a,v)=>a+Object.keys(v).length,0);
@@ -840,9 +840,10 @@ function vAdmin(){
       <div class="glass card" id="memBox"><small class="muted">Memuat…</small></div>
     </section>
     <section style="display:grid;gap:10px;--i:2">
-      <div class="section-h"><h2>Admin & koordinator</h2></div>
-      <div class="glass card">${adm.map(a=>`<div class="row between"><span><b>${esc(a.nama)}</b> <span class="dim mono">${esc(a.email)}</span></span>${a.email!==S.me.email?`<button class="btn btn-bad btn-sm" data-unadm="${esc(a.email)}" type="button">Cabut admin</button>`:`<span class="pill p-info">Anda</span>`}</div>`).join("")}
-        <div class="row" style="flex-wrap:nowrap"><input class="field" id="admEmail" placeholder="email koordinator" style="flex:1"><input class="field" id="admName" placeholder="nama" style="flex:1"><button class="btn btn-grad btn-sm" id="addAdm" type="button">Tambah admin</button></div></div>
+      <div class="section-h"><h2>Koordinator & pembantu perbaikan</h2><small class="muted">Bisa melihat dan mengedit titik seluruh kecamatan, tanpa menu Admin. Menu Admin dikunci untuk email pemilik.</small></div>
+      <div class="glass card">${kor.length?kor.map(a=>`<div class="row between"><span><b>${esc(a.nama)}</b> <span class="dim mono">${esc(a.email)}</span>${a.peran==="PPL"||a.peran==="PML"?` <span class="pill p-mute">${a.peran}</span>`:""}</span><button class="btn btn-bad btn-sm" data-unkor="${esc(a.email)}" type="button">Cabut</button></div>`).join(""):`<small class="muted">Belum ada.</small>`}
+        <div class="row" style="flex-wrap:nowrap"><input class="field" id="korEmail" placeholder="email Google" style="flex:1;min-width:0"><input class="field" id="korName" placeholder="nama" style="flex:1;min-width:0"><button class="btn btn-grad btn-sm" id="addKor" type="button">Tambah</button></div>
+        <small class="muted">Admin: ${adm.map(a=>esc(a.nama)+" <span class=\"dim mono\">"+esc(a.email)+"</span>").join(" · ")}</small></div>
     </section>
     <section style="display:grid;gap:10px;--i:3">
       <div class="section-h"><h2>Petugas</h2><small class="muted">${pml.length} PML · ${Object.values(S.people).filter(v=>v.peran==="PPL").length} PPL · ubah nama atau email lalu tekan Simpan · akses khusus langsung tersimpan saat dipilih</small></div>
@@ -871,13 +872,16 @@ function vAdmin(){
     if(error){toast("Gagal: "+error.message);b.disabled=false;return}
     if(upd.nama&&old===S.me.email)S.me.nama=upd.nama;
     toast(upd.email&&upd.nama?"Nama dan email diganti. Petugas masuk dengan email baru.":upd.email?"Email diganti. Petugas masuk dengan email baru.":"Nama petugas diperbarui.");await loadAll();vAdmin()}});
-  $("#addAdm").onclick=async()=>{const e=$("#admEmail").value.trim().toLowerCase(),n=$("#admName").value.trim()||e;
-    if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)){toast("Isi email yang valid.");return}
-    const ex=S.people[e];const{error}=ex?await sb.from("petugas").update({admin:true}).eq("email",e):await sb.from("petugas").insert({email:e,nama:n,peran:"ADMIN",admin:true});
-    if(error){toast("Gagal: "+error.message);return}toast("Admin ditambahkan.");await loadAll();vAdmin()};
-  $("#view").querySelectorAll("[data-unadm]").forEach(b=>b.onclick=async()=>{const e=b.dataset.unadm;const p=S.people[e];
-    const{error}=p.peran==="ADMIN"?await sb.from("petugas").delete().eq("email",e):await sb.from("petugas").update({admin:false}).eq("email",e);
-    if(error){toast("Gagal: "+error.message);return}toast("Hak admin dicabut.");await loadAll();vAdmin()});
+  $("#addKor").onclick=async()=>{const e=$("#korEmail").value.trim().toLowerCase(),n=$("#korName").value.trim();
+    if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)){toast("Isi email Google yang valid.");return}
+    const ex=S.people[e];if(!ex&&!n){toast("Isi nama juga.");return}
+    const{error}=ex?await sb.from("petugas").update({akses:"edit_kec"}).eq("email",e):await sb.from("petugas").insert({email:e,nama:n,peran:"KOORDINATOR",akses:"edit_kec"});
+    if(error){toast("Gagal: "+error.message);return}toast(`${ex?ex.nama:n} bisa melihat & mengedit seluruh kecamatan.`,3200);await loadAll();vAdmin()};
+  $("#view").querySelectorAll("[data-unkor]").forEach(b=>b.onclick=async()=>{const e=b.dataset.unkor,p=S.people[e];
+    if(!await confirmBox("Cabut akses?",`<b>${esc(p.nama)}</b> tidak bisa lagi melihat & mengedit seluruh kecamatan.${p.peran==="KOORDINATOR"?" Ia tidak bisa masuk aplikasi lagi.":""} Perbaikan yang sudah ia buat tetap tersimpan.`,"Ya, cabut"))return;
+    let error;if(p.peran==="KOORDINATOR"){({error}=await sb.from("petugas").delete().eq("email",e));if(error)({error}=await sb.from("petugas").update({akses:null}).eq("email",e))}
+    else({error}=await sb.from("petugas").update({akses:null}).eq("email",e));
+    if(error){toast("Gagal: "+error.message);return}toast("Akses dicabut.");await loadAll();vAdmin()});
 }
 
 /* ---------- Impor ---------- */

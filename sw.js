@@ -1,6 +1,6 @@
-/* v26: aset & pustaka dari cache (cepat), halaman utama dicek ke server dulu, data aplikasi selalu dari server */
-const V="ctb-v26",C=V+"-app",T="ctb-tiles",SC="ctb-scan";
-const SHELL=["./","index.html","app.css?v=26","app.js?v=26","config.js?v=26","manifest.webmanifest","icon-192.png","icon-512.png"];
+/* v27: aset & pustaka dari cache (cepat), halaman utama dicek ke server dulu, data aplikasi selalu dari server */
+const V="ctb-v27",C=V+"-app",T="ctb-tiles",SC="ctb-scan";
+const SHELL=["./","index.html","app.css?v=27","app.js?v=27","config.js?v=27","manifest.webmanifest","icon-192.png","icon-512.png"];
 self.addEventListener("install",e=>{e.waitUntil(caches.open(C).then(c=>c.addAll(SHELL)).then(()=>self.skipWaiting()))});
 self.addEventListener("activate",e=>{e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==C&&k!==T&&k!==SC&&k!=="ctb-lib").map(k=>caches.delete(k)))).then(()=>self.clients.claim()))});
 async function trim(name,max){const c=await caches.open(name),k=await c.keys();if(k.length>max)for(const r of k.slice(0,k.length-max))await c.delete(r)}
