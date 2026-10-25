@@ -638,3 +638,12 @@ html body .app.on-peta .view .sheet .li-acts button.on{color:#fff!important}
   .on-peta .view .glass,.on-peta .view .glass.solid{backdrop-filter:blur(6px)!important;-webkit-backdrop-filter:blur(6px)!important}
   .on-peta .nav{backdrop-filter:blur(6px)!important;-webkit-backdrop-filter:blur(6px)!important}
 }
+/* v28: pengaturan kecamatan & pilihan kecamatan di login */
+.peng-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.peng-grid label{display:grid;gap:4px;min-width:0}
+.peng-grid .field{width:100%;min-width:0;box-sizing:border-box}
+@media (max-width:600px){.peng-grid{grid-template-columns:minmax(0,1fr)}}
+.kec-wrap{display:grid;gap:5px}
+.kec-wrap select{width:100%;box-sizing:border-box}
+#kabList .card{min-width:0}
+#kabList .tbl-wrap{overflow-x:auto;max-width:100%}

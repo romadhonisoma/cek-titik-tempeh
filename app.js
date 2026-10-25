@@ -1,17 +1,31 @@
-/* Cek Titik Bangunan Tempeh — aplikasi online (Supabase + Leaflet) */
+/* Cek Titik Bangunan SE2026 — aplikasi online multi-kecamatan (Supabase + Leaflet) */
 "use strict";
-const sb = supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_KEY, { auth: { persistSession: true, detectSessionInUrl: true, flowType: "pkce" } });
-const TARGET_TITIK = 36980, TARGET_SLS = 630;
+const store = { get(k){try{return localStorage.getItem(k)}catch(e){return null}}, set(k,v){try{localStorage.setItem(k,v)}catch(e){}}, del(k){try{localStorage.removeItem(k)}catch(e){}} };
+/* pusat = database Tempeh (daftar kecamatan + koordinator kabupaten); tiap kecamatan punya database sendiri */
+const HUB = { kode: "3508050", nama: "Tempeh", url: CFG.SUPABASE_URL, kunci: CFG.SUPABASE_KEY };
+let REG = (()=>{try{const r=JSON.parse(store.get("ctb-reg")||"null");return Array.isArray(r)&&r.length?r:[HUB]}catch(e){return [HUB]}})();
+const KEC = REG.find(k=>k.kode===store.get("ctb-kec")) || REG.find(k=>k.url===HUB.url) || REG[0];
+const IS_HUB = KEC.url === HUB.url;
+const sb = supabase.createClient(KEC.url, KEC.kunci, { auth: { persistSession: true, detectSessionInUrl: true, flowType: "pkce" } });
+const restRpc = async (k, fn, body) => { const r = await fetch(k.url + "/rest/v1/rpc/" + fn, { method: "POST", headers: { apikey: k.kunci, "Content-Type": "application/json" }, body: JSON.stringify(body || {}) }); if (!r.ok) throw new Error("HTTP " + r.status); return r.json() };
+async function loadReg(){
+  try{const r=await fetch(HUB.url+"/rest/v1/kecamatan?select=kode,nama,url,kunci,urut&aktif=eq.true&order=urut.asc,nama.asc",{headers:{apikey:HUB.kunci}});
+    if(!r.ok)return REG;const d=await r.json();if(Array.isArray(d)&&d.length){REG=d;store.set("ctb-reg",JSON.stringify(d))}}catch(e){}
+  return REG}
+const CFGDEF = { kode_kec: KEC.kode, nama_kec: KEC.nama, nama_kab: "Lumajang", target_titik: 0, target_sls: 0 };
+const KODE = () => (S.cfg && S.cfg.kode_kec) || KEC.kode;
+const NAMA_KEC = () => (S.cfg && S.cfg.nama_kec) || KEC.nama;
+const TARGET_TITIK_ = () => +(S.cfg && S.cfg.target_titik) || 0;
+const TARGET_SLS_ = () => +(S.cfg && S.cfg.target_sls) || 0;
 /* naikkan bersama ?v= di index.html dan nama cache di sw.js setiap rilis */
-const VERSI = "27", VERSI_TGL = "24 Okt 2026";
+const VERSI = "28", VERSI_TGL = "25 Okt 2026";
 const MOBILE = () => innerWidth < 960;
 const S = {
   me: null, view: "beranda", sel: null, scan: "wss", opac: .85, showPts: true, showBatas: true, base: "sat",
   tab: "titik", placing: null, focus: null, draft: null, detail: null, minHead: false, minSheet: MOBILE(),
   theme: "dark", open: {}, q: "",
-  sls: {}, slsIds: [], people: {}, corr: {}, temuan: {}, status: {}, scans: {}, pts: {}, geoms: {}, urls: {}
+  cfg: null, kab: false, sls: {}, slsIds: [], people: {}, corr: {}, temuan: {}, status: {}, scans: {}, pts: {}, geoms: {}, urls: {}
 };
-const store = { get(k){try{return localStorage.getItem(k)}catch(e){return null}}, set(k,v){try{localStorage.setItem(k,v)}catch(e){}} };
 {const t=store.get("ctb-theme");if(t==="light"||t==="dark")S.theme=t}
 
 const $ = (s,el=document)=>el.querySelector(s);
@@ -32,6 +46,7 @@ const ICON = {
   map:sv('<path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2z"/><path d="M9 4v14M15 6v14"/>'),
   edit:sv('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/>'),
   admin:sv('<path d="M12 3 4 6v6c0 4.5 3.4 8.3 8 9 4.6-.7 8-4.5 8-9V6z"/><path d="m9 12 2 2 4-4"/>'),
+  kab:sv('<path d="M3 21h18"/><path d="M5 21V10l7-5 7 5v11"/><path d="M9 21v-6h6v6"/>'),
   out:sv('<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>'),
   plus:sv('<path d="M12 5v14M5 12h14"/>'), minus:sv('<path d="M5 12h14"/>'),
   target:sv('<circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>'),
@@ -107,20 +122,23 @@ function canEdit(id){if(!S.me)return false;if(isAdmin()||isBase(id))return true;
 function canReview(id){if(isAdmin())return true;const s=S.sls[id];return !!(s&&S.people[s.ppl_email]&&S.people[s.ppl_email].pml_email===S.me.email)}
 function corrFromRow(r){return {aid:r.assignment_id,sls:r.idsubsls,no:r.no_bang,ub:r.unique_bang,jenis:r.jenis,lat:r.lat,lng:r.lon,note:r.catatan||"",by:r.oleh_email,at:r.updated_at||r.created_at,review:r.status,rby:r.reviewed_by,jumlah:r.jumlah}}
 async function loadAll(){
-  const [sls,ppl,kor,tem,st,sc,riw]=await Promise.all([
+  const [sls,ppl,kor,tem,st,sc,riw,cfg]=await Promise.all([
     fetchAll(()=>sb.from("sls").select("idsubsls,nmsls,kddesa,nmdesa,ppl_email,n_titik,n_far,berubah_batas,peta_sls").order("idsubsls")),
     fetchAll(()=>sb.from("petugas").select("email,nama,peran,pml_email,admin,akses").order("email")),
     fetchAll(()=>sb.from("koreksi").select("*").order("assignment_id")),
     fetchAll(()=>sb.from("temuan").select("id,idsubsls,jenis,no_bang,keterangan,jawaban,dijawab_oleh").order("id")),
     fetchAll(()=>sb.from("sls_status").select("*").order("idsubsls")),
     fetchAll(()=>sb.from("scan").select("key,idsubsls,jenis").order("key")),
-    fetchAll(()=>sb.from("riwayat").select("*").order("assignment_id")).catch(()=>[])
+    fetchAll(()=>sb.from("riwayat").select("*").order("assignment_id")).catch(()=>[]),
+    Promise.resolve(sb.from("pengaturan").select("kode_kec,nama_kec,nama_kab,target_titik,target_sls").maybeSingle()).then(r=>r&&r.data).catch(()=>null)
   ]);
-  const d={sls,ppl,kor,tem,st,sc,riw};applyData(d);
-  try{localStorage.setItem("ctb-cache-"+S.me.email,JSON.stringify({v:1,t:Date.now(),me:S.me,d}))}catch(e){}
+  const d={sls,ppl,kor,tem,st,sc,riw,cfg};applyData(d);
+  try{localStorage.setItem(cacheKey(S.me.email),JSON.stringify({v:2,t:Date.now(),me:S.me,kab:S.kab,d}))}catch(e){}
 }
-function cacheGet(email){try{const c=JSON.parse(localStorage.getItem("ctb-cache-"+email)||"null");return c&&c.v===1?c:null}catch(e){return null}}
-function applyData({sls,ppl,kor,tem,st,sc,riw}){
+const cacheKey=email=>"ctb-cache-"+KEC.kode+"-"+email;
+function cacheGet(email){try{const c=JSON.parse(localStorage.getItem(cacheKey(email))||"null");return c&&c.v===2?c:null}catch(e){return null}}
+function applyData({sls,ppl,kor,tem,st,sc,riw,cfg}){
+  S.cfg={...CFGDEF,...(cfg||{})};document.title="Cek Titik Bangunan · "+NAMA_KEC();
   S._ci=null;S._corrVer=(S._corrVer||0)+1;
   S.sls={};sls.forEach(r=>S.sls[r.idsubsls]=r);S.slsIds=sls.map(r=>r.idsubsls);
   S.people={};ppl.forEach(r=>S.people[r.email]=r);
@@ -157,8 +175,17 @@ async function loadSlsDetail(id){
 }
 
 /* ---------- Login ---------- */
+function kecPicker(){
+  const w=$("#kecWrap"),sel=$("#kecSel");if(!w||!sel)return;
+  $("#kecNama").textContent="Kecamatan "+KEC.nama;
+  if(REG.length<2){w.hidden=true;return}
+  w.hidden=false;sel.innerHTML=REG.map(k=>`<option value="${esc(k.kode)}"${k.kode===KEC.kode?" selected":""}>Kec. ${esc(k.nama)} (${esc(k.kode)})</option>`).join("");
+  sel.onchange=()=>{store.set("ctb-kec",sel.value);location.reload()};
+}
+function pindahKec(kode){store.set("ctb-kec",kode);location.href=location.pathname}
 async function boot(){
-  $("#gbtn").onclick=async()=>{const{error}=await sb.auth.signInWithOAuth({provider:"google",options:{redirectTo:location.origin+location.pathname,queryParams:{prompt:"select_account"}}});if(error)toast("Gagal membuka login Google: "+error.message)};
+  kecPicker();loadReg().then(kecPicker);
+  $("#gbtn").onclick=async()=>{store.set("ctb-kec",KEC.kode);const{error}=await sb.auth.signInWithOAuth({provider:"google",options:{redirectTo:location.origin+location.pathname,queryParams:{prompt:"select_account"}}});if(error)toast("Gagal membuka login Google: "+error.message)};
   const qp=new URLSearchParams(location.search+"&"+location.hash.slice(1)),er=qp.get("error_description")||qp.get("error");
   const {data:{session}}=await sb.auth.getSession();
   if(er&&!session){history.replaceState(null,"",location.pathname);return showLogin(`<b style="color:var(--bad)">Login gagal:</b> ${esc(er.replace(/\+/g," "))}<br>Coba lagi, atau kirim pesan ini ke admin.`)}
@@ -174,18 +201,19 @@ async function afterLogin(session){
     const cache=cacheGet(email);
     if(cache&&cache.me&&cache.me.email===email){
       /* buka langsung dari data tersimpan, lalu segarkan dari server di belakang */
-      S.me=cache.me;applyData(cache.d);
-      const sl=scope();S.sel=store.get("ctb-sel-"+email);if(!sl.includes(S.sel))S.sel=sl[0]||null;
+      S.me=cache.me;S.kab=!!cache.kab;applyData(cache.d);
+      const sl=scope();S.sel=store.get("ctb-sel-"+KEC.kode+"-"+email);if(!sl.includes(S.sel))S.sel=sl[0]||null;
       $("#boot").hidden=true;$("#login").hidden=true;const app=$("#app");app.hidden=false;app.classList.add("a-zoom");render(0);
       S._logging=false;bgRefresh(email);return;
     }
+    S.kab=await cekKab();
     const {data,error}=await sb.from("petugas").select("*").eq("email",email).maybeSingle();
     if(error)throw error;
     if(!data){await sb.auth.signOut();S._logging=false;
-      showLogin(`<b style="color:var(--bad)">Email ${esc(email)} belum terdaftar.</b><br>Minta admin (Soma Romadhoni) mendaftarkan atau mengganti email Anda, lalu coba masuk lagi.`);return}
+      showLogin(`<b style="color:var(--bad)">Email ${esc(email)} belum terdaftar di Kecamatan ${esc(KEC.nama)}.</b><br>Minta admin kecamatan mendaftarkan atau mengganti email Anda${REG.length>1?", atau pilih kecamatan lain di atas":""}, lalu coba masuk lagi.`);return}
     S.me=data;$("#boot").hidden=false;
     await loadAll();
-    const sl=scope();S.sel=store.get("ctb-sel-"+email);if(!sl.includes(S.sel))S.sel=sl[0]||null;
+    const sl=scope();S.sel=store.get("ctb-sel-"+KEC.kode+"-"+email);if(!sl.includes(S.sel))S.sel=sl[0]||null;
     $("#boot").hidden=true;
     const lg=$("#login");if(!lg.hidden){const c=lg.firstElementChild;c.classList.add("a-out-zoom");lg.style.transition="opacity .3s";lg.style.opacity="0";await new Promise(r=>setTimeout(r,280));lg.hidden=true;lg.style.opacity="";c.classList.remove("a-out-zoom")}
     const app=$("#app");app.hidden=false;app.classList.remove("a-out-zoom");app.classList.add("a-zoom");render(0);
@@ -193,11 +221,13 @@ async function afterLogin(session){
   }catch(e){console.error(e);$("#boot").hidden=true;showLogin(`<b style="color:var(--bad)">Gagal memuat data:</b> ${esc(e.message||e)}`)}
   S._logging=false;
 }
+async function cekKab(){try{const{data,error}=await sb.rpc("cek_kab");return !error&&data===true}catch(e){return false}}
 async function bgRefresh(email){
   try{
+    const kb=await cekKab();if(kb!==S.kab){S.kab=kb;render(0)}
     const {data,error}=await sb.from("petugas").select("*").eq("email",email).maybeSingle();
     if(error)return;
-    if(!data){try{localStorage.removeItem("ctb-cache-"+email)}catch(e){}await sb.auth.signOut();S.me=null;showLogin(`<b style="color:var(--bad)">Email ${esc(email)} belum terdaftar.</b>`);return}
+    if(!data){store.del(cacheKey(email));await sb.auth.signOut();S.me=null;showLogin(`<b style="color:var(--bad)">Email ${esc(email)} belum terdaftar.</b>`);return}
     S.me=data;await loadAll();
     if(S.view==="peta"){if(map&&S.sel){drawPts();renderSheet();renderHead()}}
     else if(S.view==="beranda"||S.view==="koreksi"){const sc=$("#view .scroll"),y=sc?sc.scrollTop:0;render(0);const n=$("#view .scroll");if(n)n.scrollTop=y}
@@ -207,9 +237,10 @@ async function logout(){const app=$("#app");hideInstall();app.classList.remove("
 function scope(){return S.slsIds}
 
 /* ---------- Render & navigasi ---------- */
-const ORDER=["beranda","peta","koreksi","admin"];
+const ORDER=["beranda","peta","koreksi","kab","admin"];
 function render(dir){$("#app").classList.toggle("on-peta",S.view==="peta");
   const items=[["beranda","Beranda",ICON.home],["peta","Peta",ICON.map],["koreksi","Koreksi",ICON.edit]];
+  if(S.kab)items.push(["kab","Kabupaten",ICON.kab]);
   if(isAdmin())items.push(["admin","Admin",ICON.admin]);
   const nav=$("#nav"),key=items.map(i=>i[0]).join();
   if(nav.dataset.k!==key){nav.dataset.k=key;nav.innerHTML=`<span class="nav-ind" aria-hidden="true"></span><div class="brand"><div class="logo" style="width:38px;height:38px;border-radius:12px"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg></div></div>`+
@@ -217,7 +248,7 @@ function render(dir){$("#app").classList.toggle("on-peta",S.view==="peta");
     `<button type="button" data-v="keluar">${ICON.out}<span>Keluar</span></button>`}
   nav.querySelectorAll("[data-v]").forEach(b=>b.classList.toggle("on",b.dataset.v===S.view));moveInd(true);
   if(S.view!=="peta")destroyMap();
-  ({beranda:vBeranda,peta:vPeta,koreksi:vKoreksi,admin:vAdmin})[S.view]();
+  ({beranda:vBeranda,peta:vPeta,koreksi:vKoreksi,kab:vKab,admin:vAdmin})[S.view]();
   const first=$("#view").firstElementChild;
   if(first&&dir)first.classList.add(S.view==="peta"?"a-zoom":(dir<0?"a-inL":"a-inR"));
   applyTheme();
@@ -237,6 +268,49 @@ function go(v){if(v===S.view)return;const d=ORDER.indexOf(v)-ORDER.indexOf(S.vie
 $("#nav").addEventListener("click",e=>{const b=e.target.closest("button[data-v]");if(!b)return;if(b.dataset.v==="keluar")return confirmBox("Keluar dari aplikasi?","Anda perlu masuk lagi dengan akun Google untuk membuka aplikasi ini.","Keluar",true).then(ok=>ok&&logout());go(b.dataset.v)});
 async function refreshAll(){try{await loadAll();S.pts={};S.urls={};toast("Data diperbarui.");render(0)}catch(e){toast("Gagal memuat ulang: "+e.message)}}
 
+/* ---------- Kabupaten (koordinator kabupaten: rekap semua kecamatan, buka peta = lihat saja) ---------- */
+const pct=(a,b)=>b?Math.min(100,a/b*100):0;
+function agoTxt(t){if(!t)return "belum ada aktivitas";const m=(Date.now()-Date.parse(t))/60000;if(m<2)return "baru saja";if(m<60)return Math.round(m)+" menit lalu";if(m<1440)return Math.round(m/60)+" jam lalu";const d=Math.round(m/1440);return d+" hari lalu"}
+function barRow(lab,a,b,col){const p=pct(a,b);return `<div style="display:grid;gap:4px"><div class="row between"><small>${lab}</small><small class="mono">${fmt(a)} / ${fmt(b)} · ${p.toFixed(1)}%</small></div><div class="prog"><i style="width:${p}%;background:${col}"></i></div></div>`}
+async function vKab(){
+  if(!S.kab){go("beranda");return}
+  $("#view").innerHTML=`<div class="scroll"><div class="wrap stagger">
+    <div class="hello" style="--i:0"><div><div class="eyebrow">Koordinator Kabupaten · ${esc((S.cfg&&S.cfg.nama_kab)||"Lumajang")}</div><h1>Rekap kecamatan</h1></div>
+      <div class="top-actions"><button class="icon-btn" id="kabRf" type="button" aria-label="Muat ulang" title="Muat ulang">${ICON.refresh}</button></div></div>
+    <div class="kpis" style="--i:1" id="kabTot"></div>
+    <section style="display:grid;gap:10px;--i:2;grid-template-columns:minmax(0,1fr)">
+      <div class="section-h"><h2>Per kecamatan</h2><small class="muted">Angka diambil langsung dari database tiap kecamatan. "Buka peta" untuk melihat titik & scan kecamatan itu (lihat saja, tidak bisa mengubah).</small></div>
+      <div id="kabList" style="display:grid;gap:10px;grid-template-columns:minmax(0,1fr)"><div class="glass card"><small class="muted">Memuat rekap…</small></div></div>
+    </section></div></div>`;
+  $("#kabRf").onclick=()=>vKab();
+  const reg=await loadReg();
+  const res=await Promise.all(reg.map(k=>restRpc(k,"rekap_publik").then(r=>({k,r})).catch(e=>({k,err:e.message||String(e)}))));
+  if(S.view!=="kab"||!$("#kabList"))return;
+  const ok=res.filter(x=>x.r),T=ok.reduce((a,{r})=>({t:a.t+r.n_titik,ok:a.ok+r.ok,s:a.s+r.n_sls,b:a.b+r.beres,kd:a.kd+r.kendala}),{t:0,ok:0,s:0,b:0,kd:0});
+  $("#kabTot").innerHTML=`<div class="glass kpi"><small>Kecamatan</small><b class="mono">${reg.length}</b><small>${ok.length} terhubung</small></div>
+    <div class="glass kpi"><small>Titik bangunan</small><b class="mono">${fmt(T.t)}</b><small><span style="color:var(--ok)">${fmt(T.ok)} sudah benar</span> · ${pct(T.ok,T.t).toFixed(1)}%</small></div>
+    <div class="glass kpi"><small>SLS beres</small><b class="mono">${fmt(T.b)}</b><small>dari ${fmt(T.s)} SLS · ${pct(T.b,T.s).toFixed(1)}%</small></div>
+    <div class="glass kpi"><small>Kendala</small><b class="mono" style="color:var(--magenta)">${fmt(T.kd)}</b><small>titik ditandai !</small></div>`;
+  $("#kabList").innerHTML=res.map(({k,r,err},i)=>{
+    const cur=k.kode===KEC.kode;
+    if(err)return `<div class="glass card"><div class="row between"><b>Kec. ${esc(k.nama)} <span class="dim mono">${esc(k.kode)}</span></b>${cur?`<span class="pill p-info">Sedang dibuka</span>`:""}</div>
+      <small class="muted">Database tidak bisa dihubungi (${esc(err)}). Kemungkinan database "tidur" karena seminggu tidak dipakai, atau belum selesai dipasang. Admin kecamatan bisa membangunkannya di dashboard Supabase.</small></div>`;
+    const tgt=r.target_titik&&r.target_titik!==r.n_titik?` · target ${fmt(r.target_titik)}`:"";
+    return `<div class="glass card" style="display:grid;gap:10px;grid-template-columns:minmax(0,1fr)">
+      <div class="row between" style="gap:8px"><div><b>Kec. ${esc(r.nama||k.nama)}</b> <span class="dim mono">${esc(r.kode||k.kode)}</span><div><small class="muted">${fmt(r.n_petugas)} petugas · aktivitas terakhir ${agoTxt(r.terakhir)}${tgt}</small></div></div>
+        <div class="row" style="gap:6px">${cur?`<span class="pill p-info">Sedang dibuka</span>`:`<button class="btn btn-grad btn-sm" data-buka="${esc(k.kode)}" type="button">Buka peta</button>`}</div></div>
+      ${barRow("Titik sudah benar",r.ok,r.n_titik,"var(--ok)")}
+      ${barRow("SLS beres",r.beres,r.n_sls,"var(--cyan)")}
+      <div class="row" style="gap:6px;flex-wrap:wrap"><span class="pill p-new">${fmt(r.pindah)} lokasi diperbaiki</span><span class="pill p-mag">${fmt(r.kendala)} kendala</span><span class="pill p-mute">temuan ${fmt(r.temuan_dijawab)}/${fmt(r.temuan)} dijawab</span>
+        ${(r.desa||[]).length?`<button class="link" data-desa="${i}" type="button" style="font-size:12px;color:var(--muted);text-decoration:underline;margin-left:auto">rincian ${(r.desa||[]).length} desa</button>`:""}</div>
+      <div id="desa${i}" hidden></div></div>`}).join("");
+  $("#kabList").querySelectorAll("[data-buka]").forEach(b=>b.onclick=async()=>{const k=REG.find(x=>x.kode===b.dataset.buka);
+    if(await confirmBox(`Buka Kec. ${k.nama}?`,"Aplikasi pindah ke kecamatan ini. Jika diminta, masuk lagi dengan akun Google yang sama. Untuk kembali, buka menu Kabupaten lalu pilih kecamatan semula.","Buka"))pindahKec(k.kode)});
+  $("#kabList").querySelectorAll("[data-desa]").forEach(b=>b.onclick=()=>{const i=+b.dataset.desa,el=$("#desa"+i),r=res[i].r;
+    if(!el.hidden){el.hidden=true;return}
+    el.innerHTML=`<div class="tbl-wrap"><table><thead><tr><th>Desa</th><th>SLS beres</th><th>Titik benar</th><th>Kendala</th></tr></thead><tbody>${r.desa.map(d=>`<tr><td>${esc(tc(d.nm||d.kd))}</td><td class="mono">${fmt(d.beres)}/${fmt(d.n_sls)}</td><td class="mono">${fmt(d.ok)}/${fmt(d.n_titik)} · ${pct(d.ok,d.n_titik).toFixed(0)}%</td><td class="mono">${fmt(d.kendala)}</td></tr>`).join("")}</tbody></table></div>`;el.hidden=false});
+}
+
 /* ---------- Beranda ---------- */
 const tc=t=>(t||"").toLowerCase().replace(/\b\w/g,c=>c.toUpperCase());
 function dusunOf(nm){const m=(nm||"").match(/\b(DUSUN|DSN\.?|LINGKUNGAN|LINGK\.?|KAMPUNG|KRAJAN)\b\s*(.*)$/i);if(!m)return "Non-permukiman (sawah/kebun)";return m[1].toUpperCase().startsWith("KRAJAN")?"Dusun Krajan "+tc(m[2]):(/^(LINGKUNGAN|LINGK)/i.test(m[1])?"Lingkungan ":"Dusun ")+tc(m[2])}
@@ -250,11 +324,11 @@ function vBeranda(){
   const u=me(),sl=scope(),st=sl.map(slsStat);
   const tot=st.reduce((a,b)=>({n:a.n+b.n,benar:a.benar+b.benar,salah:a.salah+b.salah,pindah:a.pindah+b.pindah,done:a.done+(b.done?1:0),tem:a.tem+b.tem,dij:a.dij+b.dij,far:a.far+b.far}),{n:0,benar:0,salah:0,pindah:0,done:0,tem:0,dij:0,far:0});
   const menunggu=Object.values(S.corr).filter(c=>c.jenis!=="benar"&&c.review==="menunggu").length;
-  const scopeTxt=isAdmin()?"Seluruh Kecamatan Tempeh":S.me.akses==="edit_kec"?"Seluruh Kecamatan Tempeh (lihat & edit)":((S.me.peran==="PML"?"Semua SLS PPL Anda":"Semua SLS tugas Anda")+(S.me.akses?" + akses khusus: "+AKSES[S.me.akses].toLowerCase():""));
+  const scopeTxt=isAdmin()?"Seluruh Kecamatan "+NAMA_KEC():S.me.akses==="edit_kec"?"Seluruh Kecamatan "+NAMA_KEC()+" (lihat & edit)":S.me.akses==="lihat_kab"?"Seluruh Kecamatan "+NAMA_KEC()+" (lihat saja)":((S.me.peran==="PML"?"Semua SLS PPL Anda":"Semua SLS tugas Anda")+(S.me.akses?" + akses khusus: "+AKSES[S.me.akses].toLowerCase():""));
   const groups=groupsFor(sl);if(groups.length===1)S.open[groups[0].k]=true;
   const nBatas=sl.filter(id=>S.sls[id].berubah_batas).length;
   $("#view").innerHTML=`<div class="scroll"><div class="wrap stagger">
-    <div class="hello" style="--i:0"><div><div class="eyebrow">${esc(u.peran==="KOORDINATOR"?"Koordinator":u.admin&&u.peran!=="ADMIN"?u.peran+" · Admin":u.peran)}</div><h1>Halo, ${esc((u.nama||"").split(" ")[0])}</h1></div>
+    <div class="hello" style="--i:0"><div><div class="eyebrow">${esc(u.peran==="KAB"?"Koordinator Kabupaten · Kec. "+NAMA_KEC():u.peran==="KOORDINATOR"?"Koordinator · Kec. "+NAMA_KEC():u.admin&&u.peran!=="ADMIN"?u.peran+" · Admin":u.peran)}</div><h1>Halo, ${esc((u.nama||"").split(" ")[0])}</h1></div>
       <div class="top-actions"><button class="icon-btn" id="rfBtn" type="button" aria-label="Muat ulang data" title="Muat ulang data">${ICON.refresh}</button><button class="btn btn-sm" id="insBtn" type="button">${small(ICON.install)}Pasang</button><button class="icon-btn theme-toggle" type="button"></button></div></div>
     <div class="kpis" style="--i:1">
       <div class="glass kpi"><small>SLS</small><b class="mono">${fmt(sl.length)}</b><small>${tot.done} beres · <span style="color:var(--cyan)">${nBatas} berubah batas</span></small></div>
@@ -265,7 +339,7 @@ function vBeranda(){
     <div class="section-h" style="--i:2"><div><h2>Wilayah</h2><small class="muted">${scopeTxt} · per desa, dusun, lalu SLS</small></div>
       <label class="search" aria-label="Cari SLS">${ICON.search}<input class="field" id="q" placeholder="Cari SLS, dusun, atau nama petugas" value="${esc(S.q)}" autocomplete="off"></label></div>
     <div id="groups" style="--i:3;display:grid;gap:8px"></div>
-    <div class="ver" style="--i:4">Cek Titik Bangunan Tempeh · <span class="mono">Versi ${VERSI}</span> · diperbarui ${VERSI_TGL}</div>
+    <div class="ver" style="--i:4">Cek Titik Bangunan · Kec. ${esc(NAMA_KEC())} · <span class="mono">Versi ${VERSI}</span> · diperbarui ${VERSI_TGL}</div>
   </div></div>`;
   if(!sl.length)$("#groups").innerHTML=`<div class="glass empty">Belum ada SLS untuk akun ini. Hubungi admin.</div>`;else drawGroups(groups);
   $("#q").oninput=e=>{S.q=e.target.value.trim().toLowerCase();drawGroups(groups)};
@@ -296,7 +370,7 @@ function drawGroups(groups){
 function petugasTxt(id){const s=S.sls[id],p=S.people[s.ppl_email];if(S.me.peran==="PPL"&&!isAdmin())return"";
   const ppl=p?p.nama:(s.ppl_email||"—");if(isAdmin())return `<span>PPL ${esc(ppl)}</span><span>PML ${esc(p?nameOf(p.pml_email):"—")}</span>`;return `<span>PPL ${esc(ppl)}</span>`}
 function rowsHtml(ids){return ids.map(id=>{const t=slsStat(id),s=S.sls[id];return `<button class="sls-row" data-s="${id}" type="button"><span class="k">${id.slice(10,14)}${id.slice(14)!=="00"?"."+id.slice(14):""}</span><span class="mid"><b>${esc(s.nmsls||id)}</b><span class="meta">${petugasTxt(id)}<span>${t.n} titik · <b style="color:var(--ok);display:inline;font-size:inherit">${t.benar} benar</b></span>${t.salah?`<span style="color:var(--magenta)">${t.salah} kendala</span>`:""}${t.far?`<span style="color:var(--warn)">${t.far} perlu dicek</span>`:""}${t.tem-t.dij?`<span style="color:var(--magenta)">${t.tem-t.dij} temuan</span>`:""}${s.berubah_batas?`<span style="color:var(--cyan);font-weight:700">● batas berubah</span>`:""}${s.peta_sls?`<span style="color:var(--warn);font-weight:700">⇄ peta ${s.peta_sls.slice(10,14)}</span>`:""}${canEdit(id)?"":`<span class="dim">👁 lihat saja</span>`}${S.scans[petaOf(id)]?"":`<span class="dim">scan belum ada</span>`}</span></span><span class="pill ${t.status[1]}">${t.status[0]}</span></button>`}).join("")}
-function setSel(id){S.sel=id;store.set("ctb-sel-"+S.me.email,id)}
+function setSel(id){S.sel=id;store.set("ctb-sel-"+KEC.kode+"-"+S.me.email,id)}
 
 /* ---------- Peta ---------- */
 let map=null,L_pts=null,L_bat=null,L_ctx=null,L_cor=null,scanLayer=null,baseLayer=null,ptMarkers={},popup=null,popFor=null;
@@ -802,6 +876,71 @@ async function loadMem(){
     for(let i=0;i<paths.length;i+=100){const{error}=await sb.storage.from("scan").remove(paths.slice(i,i+100));if(error){toast("Gagal: "+error.message);break}}
     toast(`${fmt(paths.length)} gambar scan dihapus.`);loadMem()};
 }
+function renderPeng(){
+  const box=$("#pengBox");if(!box)return;const c=S.cfg||CFGDEF;
+  const nT=S.slsIds.reduce((a,id)=>a+(S.sls[id].n_titik||0),0),nS=S.slsIds.length;
+  box.innerHTML=`<div class="peng-grid">
+      <label><small class="muted">Kode kecamatan (7 digit)</small><input class="field mono" id="pgKode" inputmode="numeric" maxlength="7" value="${esc(c.kode_kec)}"></label>
+      <label><small class="muted">Nama kecamatan</small><input class="field" id="pgNama" value="${esc(c.nama_kec)}"></label>
+      <label><small class="muted">Target jumlah titik</small><input class="field mono" id="pgTT" inputmode="numeric" value="${c.target_titik||""}" placeholder="mis. 36980"></label>
+      <label><small class="muted">Target jumlah SLS</small><input class="field mono" id="pgTS" inputmode="numeric" value="${c.target_sls||""}" placeholder="mis. 630"></label>
+    </div>
+    <div class="row between" style="gap:8px"><small class="muted">Data di server sekarang: ${fmt(nT)} titik · ${fmt(nS)} SLS${nS?` · <button class="link" id="pgSama" type="button" style="font-size:12px;color:var(--cyan);text-decoration:underline">samakan target dengan data ini</button>`:""}</small>
+      <button class="btn btn-grad btn-sm" id="pgSave" type="button">Simpan pengaturan</button></div>`;
+  const sm=$("#pgSama");if(sm)sm.onclick=()=>{$("#pgTT").value=nT;$("#pgTS").value=nS};
+  $("#pgSave").onclick=async e=>{
+    const v={kode_kec:$("#pgKode").value.trim(),nama_kec:$("#pgNama").value.trim(),target_titik:parseInt($("#pgTT").value.replace(/\D/g,""))||0,target_sls:parseInt($("#pgTS").value.replace(/\D/g,""))||0,updated_at:new Date().toISOString()};
+    if(!/^\d{7}$/.test(v.kode_kec)){toast("Kode kecamatan harus 7 angka, mis. 3508050.");return}
+    if(!v.nama_kec){toast("Isi nama kecamatan.");return}
+    if(nS&&!S.slsIds.every(id=>id.startsWith(v.kode_kec))&&!await confirmBox("Kode tidak cocok dengan data",`SLS yang sudah ada di server tidak diawali <b>${esc(v.kode_kec)}</b>. Tetap simpan?`,"Tetap simpan"))return;
+    e.currentTarget.disabled=true;const{error}=await sb.from("pengaturan").update(v).eq("id",1);e.currentTarget&&(e.currentTarget.disabled=false);
+    if(error){toast("Gagal: "+error.message);return}
+    S.cfg={...S.cfg,...v};document.title="Cek Titik Bangunan · "+NAMA_KEC();toast("Pengaturan kecamatan disimpan.");vAdmin()};
+}
+async function loadHubAdm(){
+  const rb=$("#regBox"),kb=$("#kkBox");if(!rb||!kb)return;
+  const [{data:reg,error:e1},{data:kk,error:e2}]=await Promise.all([sb.from("kecamatan").select("*").order("urut").order("nama"),sb.from("koord_kab").select("*").order("nama")]);
+  if(!$("#regBox"))return;
+  if(e1||e2){rb.innerHTML=kb.innerHTML=`<small class="muted">Gagal memuat: ${esc((e1||e2).message)}</small>`;return}
+  rb.innerHTML=`<div class="tbl-wrap"><table><thead><tr><th>Kode</th><th>Kecamatan</th><th>Database</th><th>Status</th><th></th></tr></thead><tbody>
+    ${reg.map(k=>`<tr><td class="mono">${esc(k.kode)}</td><td><b>${esc(k.nama)}</b></td><td class="mono dim" style="font-size:11px">${esc(k.url.replace(/^https:\/\//,"").replace(/\.supabase\.co.*/,""))}</td>
+      <td><span class="pill ${k.aktif?"p-ok":"p-mute"}" data-st="${esc(k.kode)}">…</span></td>
+      <td style="white-space:nowrap">${k.url===HUB.url?`<span class="pill p-info">pusat</span>`:`<button class="btn btn-ghost btn-sm" data-akt="${esc(k.kode)}" type="button">${k.aktif?"Nonaktifkan":"Aktifkan"}</button> <button class="btn btn-bad btn-sm" data-hps="${esc(k.kode)}" type="button">Hapus</button>`}</td></tr>`).join("")}
+    </tbody></table></div>
+    <div class="peng-grid" style="margin-top:4px">
+      <input class="field mono" id="rgKode" inputmode="numeric" maxlength="7" placeholder="kode, mis. 3508060">
+      <input class="field" id="rgNama" placeholder="nama kecamatan">
+      <input class="field mono" id="rgUrl" placeholder="https://xxxx.supabase.co">
+      <input class="field mono" id="rgKey" placeholder="sb_publishable_…">
+    </div>
+    <div class="row between" style="gap:8px"><small class="muted">URL & kunci publishable ada di dashboard Supabase kecamatan → Project Settings → API Keys. Kunci ini memang boleh dibagikan.</small><button class="btn btn-grad btn-sm" id="rgAdd" type="button">Tambah kecamatan</button></div>`;
+  reg.forEach(k=>restRpc(k,"rekap_publik").then(r=>{const el=rb.querySelector(`[data-st="${k.kode}"]`);if(el)el.textContent=(k.aktif?"aktif":"nonaktif")+` · ${fmt(r.n_sls)} SLS · ${fmt(r.n_titik)} titik`})
+    .catch(()=>{const el=rb.querySelector(`[data-st="${k.kode}"]`);if(el){el.className="pill p-bad";el.textContent="tidak terhubung"}}));
+  rb.querySelectorAll("[data-akt]").forEach(b=>b.onclick=async()=>{const k=reg.find(x=>x.kode===b.dataset.akt);const{error}=await sb.from("kecamatan").update({aktif:!k.aktif}).eq("kode",k.kode);if(error){toast("Gagal: "+error.message);return}await loadReg();loadHubAdm()});
+  rb.querySelectorAll("[data-hps]").forEach(b=>b.onclick=async()=>{const k=reg.find(x=>x.kode===b.dataset.hps);
+    if(!await confirmBox(`Hapus Kec. ${k.nama} dari daftar?`,"Hanya menghapus dari daftar aplikasi. Database kecamatannya sendiri tidak terhapus.","Hapus",true))return;
+    const{error}=await sb.from("kecamatan").delete().eq("kode",k.kode);if(error){toast("Gagal: "+error.message);return}await loadReg();loadHubAdm()});
+  $("#rgAdd").onclick=async e=>{
+    const v={kode:$("#rgKode").value.trim(),nama:$("#rgNama").value.trim(),url:$("#rgUrl").value.trim().replace(/\/+$/,""),kunci:$("#rgKey").value.trim(),aktif:true,urut:parseInt($("#rgKode").value.slice(-3))||0};
+    if(!/^\d{7}$/.test(v.kode)){toast("Kode kecamatan harus 7 angka.");return}
+    if(!v.nama){toast("Isi nama kecamatan.");return}
+    if(!/^https:\/\/[a-z0-9]{20}\.supabase\.co$/.test(v.url)){toast("URL harus seperti https://xxxxxxxxxxxxxxxxxxxx.supabase.co");return}
+    if(/^sb_secret_|service_role/i.test(v.kunci)){toast("Itu kunci RAHASIA. Pakai kunci publishable (sb_publishable_…).",4500);return}
+    if(!/^(sb_publishable_|eyJ)/.test(v.kunci)){toast("Kunci harus kunci publishable (sb_publishable_…).");return}
+    e.currentTarget.disabled=true;
+    let info="";try{const r=await restRpc(v,"rekap_publik");info=r&&r.kode&&r.kode!==v.kode?`Perhatian: kode di database itu ${r.kode} (${r.nama}).`:"Terhubung ✓"}catch(err){info="Belum terhubung ("+err.message+"). Pastikan file SQL pemasangan sudah dijalankan."}
+    const{error}=await sb.from("kecamatan").insert(v);e.currentTarget&&(e.currentTarget.disabled=false);
+    if(error){toast("Gagal: "+error.message);return}toast(`Kec. ${v.nama} ditambahkan. ${info}`,5000);await loadReg();loadHubAdm()};
+  kb.innerHTML=`${kk.length?kk.map(a=>`<div class="row between"><span><b>${esc(a.nama)}</b> <span class="dim mono">${esc(a.email)}</span></span>${a.email===S.me.email?`<span class="pill p-info">Anda</span>`:`<button class="btn btn-bad btn-sm" data-unkk="${esc(a.email)}" type="button">Cabut</button>`}</div>`).join(""):`<small class="muted">Belum ada.</small>`}
+    <div class="row" style="flex-wrap:nowrap"><input class="field" id="kkEmail" placeholder="email Google" style="flex:1;min-width:0"><input class="field" id="kkName" placeholder="nama" style="flex:1;min-width:0"><button class="btn btn-grad btn-sm" id="kkAdd" type="button">Tambah</button></div>`;
+  $("#kkAdd").onclick=async()=>{const e=$("#kkEmail").value.trim().toLowerCase(),n=$("#kkName").value.trim();
+    if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)){toast("Isi email Google yang valid.");return}if(!n){toast("Isi nama juga.");return}
+    const{error}=await sb.from("koord_kab").upsert({email:e,nama:n});if(error){toast("Gagal: "+error.message);return}
+    toast(`${n} jadi koordinator kabupaten. Ia tinggal masuk ke kecamatan mana pun.`,4000);loadHubAdm()};
+  kb.querySelectorAll("[data-unkk]").forEach(b=>b.onclick=async()=>{const e=b.dataset.unkk;
+    if(!await confirmBox("Cabut koordinator kabupaten?",`<b>${esc(e)}</b> tidak bisa lagi melihat rekap & peta kecamatan lain (berlaku saat ia masuk berikutnya).`,"Cabut",true))return;
+    const{error}=await sb.from("koord_kab").delete().eq("email",e);if(error){toast("Gagal: "+error.message);return}loadHubAdm()});
+}
 function vAdmin(){
   if(!isAdmin()){go("beranda");return}
   const pml=Object.values(S.people).filter(v=>v.peran==="PML").sort((a,b)=>a.nama.localeCompare(b.nama));
@@ -815,10 +954,10 @@ function vAdmin(){
       <div class="section-h"><h2>Impor data dari QGIS</h2><small class="muted">Data di server: ${fmt(totT)} titik · ${S.slsIds.length} SLS · ${nScan} lembar scan</small></div>
       <div class="imp">
         <div class="glass card"><div class="row between"><b>Titik bangunan</b><span class="pill p-blue">GeoJSON</span></div>
-          <small class="muted">File <span class="mono">3508_geotagging_koreksi.geojson</span>. Harus tepat <b>${fmt(TARGET_TITIK)}</b> titik dan assignment_id unik. Perbaikan petugas tetap menempel.</small>
+          <small class="muted">File <span class="mono">${KODE().slice(0,4)}_geotagging_koreksi.geojson</span>. Harus tepat <b>${TARGET_TITIK_()?fmt(TARGET_TITIK_()):"(isi target dulu)"}</b> titik dan assignment_id unik. Perbaikan petugas tetap menempel.</small>
           <label class="btn btn-ghost btn-sm filebtn">Pilih file titik…<input type="file" accept=".geojson,.json" multiple data-imp="titik"></label></div>
         <div class="glass card"><div class="row between"><b>Batas SLS</b><span class="pill p-blue">GeoJSON</span></div>
-          <small class="muted">File <span class="mono">3508050_sls_2026-1.geojson</span>. Harus tepat <b>${TARGET_SLS}</b> SLS. Alokasi PPL tidak berubah.</small>
+          <small class="muted">File <span class="mono">${KODE()}_sls_2026-1.geojson</span>. Harus tepat <b>${TARGET_SLS_()||"(isi target dulu)"}</b> SLS. Alokasi PPL tidak berubah.</small>
           <label class="btn btn-ghost btn-sm filebtn">Pilih file SLS…<input type="file" accept=".geojson,.json" data-imp="sls"></label></div>
         <div class="glass card"><div class="row between"><b>Scan peta + JGW</b><span class="pill p-blue">JPG + JGW</span></div>
           <small class="muted">Pilih semua file di <span class="mono">01_Rename Scan Peta</span> (boleh sebagian). Gambar diperkecil otomatis sebelum diunggah. Jika hanya memilih .jgw, posisi scan saja yang diperbarui.</small>
@@ -840,6 +979,18 @@ function vAdmin(){
       <div class="glass card" id="memBox"><small class="muted">Memuat…</small></div>
     </section>
     <section style="display:grid;gap:10px;--i:2">
+      <div class="section-h"><h2>Pengaturan kecamatan</h2><small class="muted">Dipakai untuk memeriksa file impor (jumlah titik & SLS harus sama) dan nama file unduhan.</small></div>
+      <div class="glass card" id="pengBox"></div>
+    </section>
+    ${IS_HUB?`<section style="display:grid;gap:10px;--i:2">
+      <div class="section-h"><h2>Daftar kecamatan</h2><small class="muted">Khusus pusat. Kecamatan yang aktif muncul di pilihan login dan di menu Kabupaten.</small></div>
+      <div class="glass card" id="regBox"><small class="muted">Memuat…</small></div>
+    </section>
+    <section style="display:grid;gap:10px;--i:2">
+      <div class="section-h"><h2>Koordinator kabupaten</h2><small class="muted">Bisa melihat rekap & peta semua kecamatan (lihat saja). Otomatis terdaftar di tiap kecamatan saat pertama masuk.</small></div>
+      <div class="glass card" id="kkBox"><small class="muted">Memuat…</small></div>
+    </section>`:""}
+    <section style="display:grid;gap:10px;--i:2">
       <div class="section-h"><h2>Koordinator & pembantu perbaikan</h2><small class="muted">Bisa melihat dan mengedit titik seluruh kecamatan, tanpa menu Admin. Menu Admin dikunci untuk email pemilik.</small></div>
       <div class="glass card">${kor.length?kor.map(a=>`<div class="row between"><span><b>${esc(a.nama)}</b> <span class="dim mono">${esc(a.email)}</span>${a.peran==="PPL"||a.peran==="PML"?` <span class="pill p-mute">${a.peran}</span>`:""}</span><button class="btn btn-bad btn-sm" data-unkor="${esc(a.email)}" type="button">Cabut</button></div>`).join(""):`<small class="muted">Belum ada.</small>`}
         <div class="row" style="flex-wrap:nowrap"><input class="field" id="korEmail" placeholder="email Google" style="flex:1;min-width:0"><input class="field" id="korName" placeholder="nama" style="flex:1;min-width:0"><button class="btn btn-grad btn-sm" id="addKor" type="button">Tambah</button></div>
@@ -853,7 +1004,7 @@ function vAdmin(){
     </section>
   </div></div>`;
   $("#view").querySelectorAll("input[data-imp]").forEach(inp=>inp.onchange=()=>{const files=[...inp.files];inp.value="";if(files.length)runImport(inp.dataset.imp,files)});
-  $("#dlAll").onclick=()=>exportKoreksi(false);$("#dlTem").onclick=exportTemuan;loadMem();
+  $("#dlAll").onclick=()=>exportKoreksi(false);$("#dlTem").onclick=exportTemuan;loadMem();renderPeng();if(IS_HUB)loadHubAdm();
   $("#view").querySelectorAll("[data-akses]").forEach(sel=>sel.onchange=async()=>{
     const em=sel.dataset.akses,v=sel.value||null;sel.disabled=true;
     const{error}=await sb.from("petugas").update({akses:v}).eq("email",em);sel.disabled=false;
@@ -913,8 +1064,11 @@ async function upsertBatches(table,rows,size,label,onConflict){
 const mdist=(a,b)=>Math.hypot((a[0]-b[0])*110000*Math.cos(8*Math.PI/180),(a[1]-b[1])*110000);
 async function impTitik(files){
   const feats=await readGeo(files);
-  IMP.log(`Jumlah titik: ${fmt(feats.length)} (target ${fmt(TARGET_TITIK)})`);
-  if(feats.length!==TARGET_TITIK)throw new Error(`Jumlah titik ${fmt(feats.length)}, bukan ${fmt(TARGET_TITIK)}. Impor dibatalkan, data lama tetap dipakai.`);
+  const TT=TARGET_TITIK_();if(!TT)throw new Error("Target jumlah titik belum diisi. Isi dulu di Admin → Pengaturan kecamatan.");
+  IMP.log(`Jumlah titik: ${fmt(feats.length)} (target ${fmt(TT)})`);
+  if(feats.length!==TT)throw new Error(`Jumlah titik ${fmt(feats.length)}, bukan ${fmt(TT)}. Impor dibatalkan, data lama tetap dipakai.`);
+  const lain=feats.filter(f=>!String((f.properties||{}).level_6_full_code||(f.properties||{}).idsubsls_origin||"").startsWith(KODE())).length;
+  if(lain)throw new Error(`${fmt(lain)} titik bukan milik Kecamatan ${NAMA_KEC()} (kode SLS tidak diawali ${KODE()}). Impor dibatalkan.`);
   const ids=new Set();for(const f of feats){const a=f.properties&&f.properties.assignment_id;if(!a)throw new Error("Ada titik tanpa assignment_id.");if(ids.has(a))throw new Error("assignment_id dobel: "+a);ids.add(a)}
   IMP.log("assignment_id unik ✓");
   const groups={};for(const f of feats){const p=f.properties;(groups[p.unique_bang]=groups[p.unique_bang]||[]).push(f.geometry.coordinates)}
@@ -954,8 +1108,11 @@ function dp(P,eps){if(P.length<3)return P;const a=P[0],b=P[P.length-1];let dmax=
 function simpRing(r,eps){if(r.length<5)return r;let far=0,md=0;r.forEach((p,i)=>{const d=(p[0]-r[0][0])**2+(p[1]-r[0][1])**2;if(d>md){md=d;far=i}});return dp(r.slice(0,far+1),eps).slice(0,-1).concat(dp(r.slice(far),eps)).map(p=>[+p[0].toFixed(7),+p[1].toFixed(7)])}
 async function impSls(files){
   const feats=await readGeo(files);
-  IMP.log(`Jumlah SLS: ${feats.length} (target ${TARGET_SLS})`);
-  if(feats.length!==TARGET_SLS)throw new Error(`Jumlah SLS ${feats.length}, bukan ${TARGET_SLS}. Impor dibatalkan.`);
+  const TS=TARGET_SLS_();if(!TS)throw new Error("Target jumlah SLS belum diisi. Isi dulu di Admin → Pengaturan kecamatan.");
+  IMP.log(`Jumlah SLS: ${feats.length} (target ${TS})`);
+  if(feats.length!==TS)throw new Error(`Jumlah SLS ${feats.length}, bukan ${TS}. Impor dibatalkan.`);
+  const lainS=feats.filter(f=>!String((f.properties||{}).idsubsls||"").startsWith(KODE())).length;
+  if(lainS)throw new Error(`${lainS} SLS bukan milik Kecamatan ${NAMA_KEC()} (idsubsls tidak diawali ${KODE()}). Impor dibatalkan.`);
   const batch="b"+Date.now(),seen=new Set();
   const rows=feats.map(f=>{const p=f.properties,g=f.geometry;if(!p.idsubsls)throw new Error("Ada poligon tanpa idsubsls.");if(seen.has(p.idsubsls))throw new Error("idsubsls dobel: "+p.idsubsls);seen.add(p.idsubsls);
     const polys=(g.type==="Polygon"?[g.coordinates]:g.coordinates).map(poly=>poly.map(r=>simpRing(r.map(c=>[c[0],c[1]]),0.000003)));
@@ -990,11 +1147,11 @@ async function impAlokasi(files){
   const recs=parseCSV(await readText(files[0]));
   const k=(r,...names)=>{for(const n of names){const key=Object.keys(r).find(x=>x.toLowerCase().replace(/\s+/g," ").trim()===n);if(key&&r[key])return r[key].trim()}return""};
   const pml={},ppl={},sls=[];
-  recs.forEach(r=>{const id=k(r,"id_subsls","idsubsls");if(!/^\d{16}$/.test(id))return;if(!id.startsWith("3508050"))return;
+  recs.forEach(r=>{const id=k(r,"id_subsls","idsubsls");if(!/^\d{16}$/.test(id))return;if(!id.startsWith(KODE()))return;
     const pe=k(r,"email pml").toLowerCase(),pn=k(r,"nama pml"),e=k(r,"email ppl").toLowerCase(),n=k(r,"nama ppl");if(!e||!pe)return;
     pml[pe]=pml[pe]||pn;ppl[e]=ppl[e]||{n,pe};sls.push({idsubsls:id,ppl_email:e})});
-  IMP.log(`SLS Kec. Tempeh: ${sls.length}, PML: ${Object.keys(pml).length}, PPL: ${Object.keys(ppl).length}`);
-  if(!sls.length)throw new Error("Tidak ada baris SLS Kecamatan Tempeh (3508050…) di file.");
+  IMP.log(`SLS Kec. ${NAMA_KEC()}: ${sls.length}, PML: ${Object.keys(pml).length}, PPL: ${Object.keys(ppl).length}`);
+  if(!sls.length)throw new Error(`Tidak ada baris SLS Kecamatan ${NAMA_KEC()} (${KODE()}…) di file.`);
   const pr=Object.entries(pml).map(([e,n])=>({email:e,nama:S.people[e]?S.people[e].nama:n,peran:(S.people[e]&&S.people[e].peran==="ADMIN")?"PML":"PML",admin:!!(S.people[e]&&S.people[e].admin)}));
   await upsertBatches("petugas",pr,200,"PML");
   const pp=Object.entries(ppl).filter(([e])=>!pml[e]).map(([e,v])=>({email:e,nama:S.people[e]?S.people[e].nama:v.n,peran:"PPL",pml_email:v.pe,admin:!!(S.people[e]&&S.people[e].admin)}));
@@ -1051,7 +1208,7 @@ async function exportTemuan(){
   const head=["idsubsls","desa","nmsls","jenis_temuan","no_bang","keterangan","jawaban","dijawab_oleh","dijawab_at"];
   const lines=[head.join(",")].concat(rows.map(r=>{const sl=S.sls[r.idsubsls]||{};return [r.idsubsls,sl.nmdesa,sl.nmsls,(TEM[r.jenis]||[r.jenis])[0],r.no_bang,r.keterangan,r.jawaban,r.dijawab_oleh?nameOf(r.dijawab_oleh):"",r.dijawab_at?tgl(r.dijawab_at):""].map(q).join(",")}));
   const blob=new Blob(["\ufeff"+lines.join("\r\n")],{type:"text/csv;charset=utf-8"});const a=document.createElement("a");
-  a.href=URL.createObjectURL(blob);a.download=`3508050_temuan_admin_${new Date().toISOString().slice(0,10)}.csv`;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1000);
+  a.href=URL.createObjectURL(blob);a.download=`${KODE()}_temuan_admin_${new Date().toISOString().slice(0,10)}.csv`;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1000);
   toast(`${rows.length} temuan diunduh (${rows.filter(r=>r.jawaban).length} sudah dijawab).`);
 }
 async function exportKoreksi(onlyOk){
@@ -1060,11 +1217,11 @@ async function exportKoreksi(onlyOk){
   const sel=rows.filter(r=>!onlyOk||r.status==="disetujui");
   const need=sel.map(r=>r.assignment_id),orig={};
   for(let i=0;i<need.length;i+=200){const{data,error}=await sb.from("titik").select("assignment_id,lon,lat").in("assignment_id",need.slice(i,i+200));if(error){toast("Gagal: "+error.message);return}data.forEach(t=>orig[t.assignment_id]=t)}
-  const fc={type:"FeatureCollection",name:"3508050_koreksi_petugas",crs:{type:"name",properties:{name:"urn:ogc:def:crs:OGC:1.3:CRS84"}},
+  const fc={type:"FeatureCollection",name:KODE()+"_koreksi_petugas",crs:{type:"name",properties:{name:"urn:ogc:def:crs:OGC:1.3:CRS84"}},
     features:sel.map(r=>{const o=orig[r.assignment_id]||{};return{type:"Feature",properties:{assignment_id:r.assignment_id,unique_bang:r.unique_bang,no_bang:r.no_bang,idsubsls:r.idsubsls,jenis:r.jenis,catatan:r.catatan,oleh:r.oleh_email,waktu:r.updated_at,lon_baru:r.lon,lat_baru:r.lat,lon_asal:o.lon,lat_asal:o.lat},
       geometry:{type:"Point",coordinates:r.lon!=null?[r.lon,r.lat]:[o.lon,o.lat]}}})};
   const blob=new Blob([JSON.stringify(fc)],{type:"application/geo+json"});const a=document.createElement("a");
-  a.href=URL.createObjectURL(blob);a.download=`3508050_koreksi_petugas_${new Date().toISOString().slice(0,10)}${onlyOk?"_disetujui":""}.geojson`;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1000);
+  a.href=URL.createObjectURL(blob);a.download=`${KODE()}_koreksi_petugas_${new Date().toISOString().slice(0,10)}${onlyOk?"_disetujui":""}.geojson`;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1000);
   toast(`${sel.length} perbaikan diunduh.`);
 }
 
