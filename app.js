@@ -18,7 +18,7 @@ const NAMA_KEC = () => (S.cfg && S.cfg.nama_kec) || KEC.nama;
 const TARGET_TITIK_ = () => +(S.cfg && S.cfg.target_titik) || 0;
 const TARGET_SLS_ = () => +(S.cfg && S.cfg.target_sls) || 0;
 /* naikkan bersama ?v= di index.html dan nama cache di sw.js setiap rilis */
-const VERSI = "29", VERSI_TGL = "25 Okt 2026";
+const VERSI = "31", VERSI_TGL = "25 Okt 2026";
 const MOBILE = () => innerWidth < 960;
 const S = {
   me: null, view: "beranda", sel: null, scan: "wss", opac: .85, showPts: true, showBatas: true, base: "sat",
@@ -285,14 +285,24 @@ async function geminiModels(key){
   return (j.models||[]).filter(m=>(m.supportedGenerationMethods||[]).includes("generateContent")&&/gemini/i.test(m.name)&&!/embed|tts|audio|image-gen|live/i.test(m.name))
     .map(m=>({id:m.name,nm:m.displayName||m.name}));
 }
-function pickModel(list){const f=re=>list.find(m=>re.test(m.id+" "+m.nm));return (f(/argon/i)||f(/pro/i)||f(/flash/i)||list[0]||{}).id||""}
+/* Free tier: model Pro/Argon biasanya kuotanya 0 → pakai Flash yang stabil */
+function pickModel(list){const f=re=>list.find(m=>re.test(m.id));return (f(/\/gemini-3\.5-flash$/)||f(/flash-latest$/)||f(/\/gemini-[\d.]+-flash$/)||f(/flash/)||list[0]||{}).id||""}
+const AI_NOTHINK={};/* model yang tidak mendukung thinkingLevel minimal */
 async function geminiDetect(cfg,b64){
-  const body=JSON.stringify({contents:[{role:"user",parts:[{inline_data:{mime_type:"image/jpeg",data:b64}},{text:AI_PROMPT}]}],generationConfig:{temperature:0,responseMimeType:"application/json"}});
+  const mk=()=>JSON.stringify({contents:[{role:"user",parts:[{inline_data:{mime_type:"image/jpeg",data:b64}},{text:AI_PROMPT}]}],
+    generationConfig:{temperature:0,responseMimeType:"application/json",...(AI_NOTHINK[cfg.model]?{}:{thinkingConfig:{thinkingLevel:"minimal"}})}});
+  let body=mk();
   for(let att=0;att<6;att++){
-    const r=await fetch(GAPI+cfg.model+":generateContent",{method:"POST",headers:{"Content-Type":"application/json","x-goog-api-key":cfg.key},body});
-    const j=await r.json().catch(()=>({}));
-    if(r.status===429||r.status===503){const rd=JSON.stringify(j).match(/"retryDelay"\s*:\s*"(\d+)/);const w=rd?+rd[1]+1:15*(att+1);
-      aiProg(`Batas kuota Gemini tercapai, menunggu ${w} detik…`);await new Promise(x=>setTimeout(x,w*1000));continue}
+    const ctl=new AbortController(),to=setTimeout(()=>ctl.abort(),90000);let r,j;
+    try{r=await fetch(GAPI+cfg.model+":generateContent",{method:"POST",signal:ctl.signal,headers:{"Content-Type":"application/json","x-goog-api-key":cfg.key},body});j=await r.json().catch(()=>({}))}
+    catch(e){clearTimeout(to);if(att<5){aiProg("Gemini tidak menjawab, mencoba lagi…");continue}throw new Error("Gemini tidak menjawab (koneksi/timeout)")}
+    clearTimeout(to);
+    if(r.status===429){const js=JSON.stringify(j);
+      if(/PerDay/.test(js)&&/FreeTier/.test(js))throw new Error(`Kuota harian model ${cfg.model.replace("models/","")} di Free tier habis atau tidak tersedia (model Pro/Argon umumnya tidak ada di Free tier). Pilih gemini-3.5-flash di Admin → Pengecekan AI.`);
+      const rd=js.match(/"retryDelay"\s*:\s*"(\d+)/);const w=rd?+rd[1]+1:20*(att+1);
+      aiProg(`Batas per menit Gemini tercapai, menunggu ${w} detik…`);await new Promise(x=>setTimeout(x,w*1000));continue}
+    if(r.status===503||r.status===500){aiProg("Server Gemini sedang sibuk, mencoba lagi…");await new Promise(x=>setTimeout(x,4000*(att+1)));continue}
+    if(r.status===400&&/thinking/i.test(JSON.stringify(j))&&!AI_NOTHINK[cfg.model]){AI_NOTHINK[cfg.model]=1;body=mk();att--;continue}
     if(!r.ok)throw new Error((j.error&&j.error.message)||("HTTP "+r.status));
     const txt=((((j.candidates||[])[0]||{}).content||{}).parts||[]).map(p=>p.text||"").join("").replace(/^```(json)?|```$/gm,"").trim();
     let arr=[];try{arr=JSON.parse(txt||"[]")}catch(e){const m=txt.match(/\[[\s\S]*\]/);arr=m?JSON.parse(m[0]):[]}
@@ -300,7 +310,9 @@ async function geminiDetect(cfg,b64){
   }
   throw new Error("Kuota Gemini habis. Coba lagi nanti.");
 }
-function aiProg(msg,frac){const el=$("#aiProg");if(!el)return;el.hidden=false;el.querySelector("small").textContent=msg;if(frac!=null)el.querySelector("i").style.width=(frac*100).toFixed(0)+"%"}
+function aiProg(msg,frac){if(msg)S._aiMsg=msg;if(frac!=null)S._aiFrac=frac;aiProgPaint()}
+function aiProgPaint(){const el=$("#aiProg");if(!el||!S._aiBusy)return;el.hidden=false;const sec=Math.round((Date.now()-(S._aiT0||Date.now()))/1000);
+  el.querySelector("small").textContent=(S._aiMsg||"Menyiapkan…")+` · ${sec} detik`;el.querySelector("i").style.width=((S._aiFrac||0)*100).toFixed(0)+"%"}
 async function loadBitmap(url){const r=await fetch(url,{mode:"cors"});if(!r.ok)throw new Error("Gambar scan gagal dimuat");return createImageBitmap(await r.blob())}
 /* baca semua nomor di scan SLS ini → posisi lon/lat */
 async function aiRun(s){
@@ -308,14 +320,13 @@ async function aiRun(s){
   if(S._aiBusy){toast("Pengecekan AI masih berjalan.");return}
   const ar=petaOf(s);await loadSlsDetail(s);const sc=S.urls[ar]||{};const sheets=["wss","inset"].map(j=>sc[j]).filter(Boolean);
   if(!sheets.length){toast("SLS ini belum punya gambar scan.");return}
-  S._aiBusy=s;const t0=Date.now();let tok=0,dets=[];
+  S._aiBusy=s;S._aiT0=Date.now();S._aiMsg="Menyiapkan gambar…";S._aiFrac=0;const tick=setInterval(aiProgPaint,1000);const t0=Date.now();let tok=0,dets=[];
   try{
     const jobs=[];
     for(const r of sheets){const bmp=await loadBitmap(r.url);const W=bmp.width,H=bmp.height,n=Math.max(1,Math.ceil(Math.max(W,H)/1100)),ov=.12;
       const tw=W/n,th=H/n;
       for(let gy=0;gy<n;gy++)for(let gx=0;gx<n;gx++){const x0=Math.max(0,gx*tw-tw*ov),y0=Math.max(0,gy*th-th*ov),x1=Math.min(W,(gx+1)*tw+tw*ov),y1=Math.min(H,(gy+1)*th+th*ov);jobs.push({r,bmp,W,H,x0,y0,x1,y1})}}
-    for(let i=0;i<jobs.length;i++){const J=jobs[i];
-      aiProg(`Membaca potongan ${i+1}/${jobs.length} dengan ${cfg.model.replace("models/","")}…`,i/jobs.length);
+    let next=0,fin=0;const one=async J=>{
       const cw=Math.round(J.x1-J.x0),ch=Math.round(J.y1-J.y0),k=Math.min(2,1500/Math.max(cw,ch));
       const cv=document.createElement("canvas");cv.width=Math.round(cw*k);cv.height=Math.round(ch*k);const g=cv.getContext("2d");g.imageSmoothingQuality="high";
       g.drawImage(J.bmp,J.x0,J.y0,cw,ch,0,0,cv.width,cv.height);
@@ -325,15 +336,17 @@ async function aiRun(s){
         const px=J.x0+((+b[1]+ +b[3])/2/1000)*cw,py=J.y0+((+b[0]+ +b[2])/2/1000)*ch,u=px/J.W,v=py/J.H,r=J.r;
         const lng=r.tl[0]+(r.tr[0]-r.tl[0])*u+(r.bl[0]-r.tl[0])*v,lat=r.tl[1]+(r.tr[1]-r.tl[1])*u+(r.bl[1]-r.tl[1])*v;
         dets.push({no,lng,lat,ragu:!!d.ragu,src:r.jenis})}
-    }
+      fin++;aiProg(`Membaca potongan ${fin}/${jobs.length} dengan ${cfg.model.replace("models/","")}…`,fin/jobs.length)};
+    aiProg(`Mengirim ${jobs.length} potongan ke ${cfg.model.replace("models/","")}…`,0);
+    await Promise.all([0,1,2].map(async()=>{while(next<jobs.length){const J=jobs[next++];await one(J)}}));
     jobs.forEach(J=>J.bmp.close&&J.bmp.close());
     /* gabungkan nomor yang sama di potongan bertumpuk / inset (≤ 6 m) */
     const out=[];for(const d of dets){const o=out.find(x=>x.no===d.no&&mDist([x.lng,x.lat],[d.lng,d.lat])<6);if(o){o.ragu=o.ragu&&d.ragu;if(d.src==="inset"){o.lng=d.lng;o.lat=d.lat;o.src="inset"}}else out.push({...d})}
     const data={at:new Date().toISOString(),model:cfg.model,tok,det:out,sec:Math.round((Date.now()-t0)/1000)};
     S.ai[s]=data;store.set(aiKeyOf(s),JSON.stringify(data));
     toast(`AI selesai: ${out.length} nomor terbaca · ${fmt(tok)} token · ${data.sec} detik.`,4500);
-  }catch(e){toast("Cek AI gagal: "+(e.message||e),6000)}
-  S._aiBusy=null;if(S.sel===s){drawPts();renderSheet()}
+  }catch(e){toast("Cek AI gagal: "+(e.message||e),9000)}
+  clearInterval(tick);S._aiBusy=null;if(S.sel===s){drawPts();renderSheet()}
 }
 /* bandingkan hasil AI dengan titik digital */
 function aiCompare(s){
@@ -360,7 +373,7 @@ function aiHtml(s){
     <div class="row between" style="gap:8px"><div><b>Cek otomatis dengan AI</b><div><small class="muted">${A?`Hasil ${tgl(A.at)} · ${esc(A.model.replace("models/",""))} · ${A.det.length} nomor terbaca · ${fmt(A.tok)} token`:"AI membaca nomor tulisan tangan di scan lalu membandingkannya dengan titik digital. Hasilnya hanya usulan."}</small></div></div>
       <button class="btn btn-grad btn-sm" id="aiGo" type="button"${busy||!cfg.key?" disabled":""}>${busy?"Berjalan…":A?"Ulangi":"Mulai cek"}</button></div>
     ${cfg.key?"":`<small style="color:var(--warn)">Kunci API Gemini belum diisi. Buka Admin → Pengecekan AI.</small>`}
-    <div id="aiProg" ${busy?"":"hidden"}><div class="prog"><i style="width:0%"></i></div><small class="muted">Menyiapkan…</small></div></div>`;
+    <div id="aiProg" ${busy?"":"hidden"}><div class="prog"><i style="width:${((S._aiFrac||0)*100).toFixed(0)}%"></i></div><small class="muted">${esc(S._aiMsg||"Menyiapkan…")}</small></div></div>`;
   if(!R)return head;
   const sec=(k,title,sub,items,row,bulk)=>items.length?`<div class="ai-sec"><div class="row between"><b>${title} <span class="pill p-mute">${items.length}</span></b>${bulk||""}</div><small class="muted">${sub}</small><div class="list">${items.map(row).join("")}</div></div>`:"";
   const no=x=>`<span class="no">${esc(x)}</span>`,done=p=>{const c=S.corr[p.id];return c?`<span class="pill ${isOk(c)?"p-ok":"p-mag"}">${esc(jenisTxt(c))}</span>`:""};
@@ -413,7 +426,7 @@ function renderAiCfg(){
   const box=$("#aiBox");if(!box)return;const c=aiCfg();
   box.innerHTML=`<div class="peng-grid">
       <label><small class="muted">Kunci API Gemini (dari aistudio.google.com)</small><input class="field mono" id="aiKey" type="password" autocomplete="off" placeholder="${c.key?"tersimpan ••••"+esc(c.key.slice(-4)):"AIza…"}"></label>
-      <label><small class="muted">Model</small><select class="field" id="aiModel">${c.model?`<option value="${esc(c.model)}">${esc(c.model.replace("models/",""))}</option>`:`<option value="">— muat daftar model dulu —</option>`}</select></label>
+      <label><small class="muted">Model (Free tier: pakai gemini-3.5-flash; Argon/Pro butuh billing)</small><select class="field" id="aiModel">${c.model?`<option value="${esc(c.model)}">${esc(c.model.replace("models/",""))}</option>`:`<option value="">— muat daftar model dulu —</option>`}</select></label>
       <label><small class="muted">Batas jarak "cocok" (meter)</small><input class="field mono" id="aiThr" inputmode="numeric" value="${c.thr||15}"></label>
     </div>
     <div class="row between" style="gap:8px"><small class="muted">Kunci hanya disimpan di browser ini (tidak dikirim ke database, tidak terlihat petugas lain). Gambar scan dikirim langsung dari browser ini ke Google Gemini.</small>
