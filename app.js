@@ -18,13 +18,13 @@ const NAMA_KEC = () => (S.cfg && S.cfg.nama_kec) || KEC.nama;
 const TARGET_TITIK_ = () => +(S.cfg && S.cfg.target_titik) || 0;
 const TARGET_SLS_ = () => +(S.cfg && S.cfg.target_sls) || 0;
 /* naikkan bersama ?v= di index.html dan nama cache di sw.js setiap rilis */
-const VERSI = "28", VERSI_TGL = "25 Okt 2026";
+const VERSI = "29", VERSI_TGL = "25 Okt 2026";
 const MOBILE = () => innerWidth < 960;
 const S = {
   me: null, view: "beranda", sel: null, scan: "wss", opac: .85, showPts: true, showBatas: true, base: "sat",
   tab: "titik", placing: null, focus: null, draft: null, detail: null, minHead: false, minSheet: MOBILE(),
   theme: "dark", open: {}, q: "",
-  cfg: null, kab: false, sls: {}, slsIds: [], people: {}, corr: {}, temuan: {}, status: {}, scans: {}, pts: {}, geoms: {}, urls: {}
+  cfg: null, kab: false, ai: {}, sls: {}, slsIds: [], people: {}, corr: {}, temuan: {}, status: {}, scans: {}, pts: {}, geoms: {}, urls: {}
 };
 {const t=store.get("ctb-theme");if(t==="light"||t==="dark")S.theme=t}
 
@@ -267,6 +267,168 @@ function go(v){if(v===S.view)return;const d=ORDER.indexOf(v)-ORDER.indexOf(S.vie
   setTimeout(()=>render(d),cur?190:0)}
 $("#nav").addEventListener("click",e=>{const b=e.target.closest("button[data-v]");if(!b)return;if(b.dataset.v==="keluar")return confirmBox("Keluar dari aplikasi?","Anda perlu masuk lagi dengan akun Google untuk membuka aplikasi ini.","Keluar",true).then(ok=>ok&&logout());go(b.dataset.v)});
 async function refreshAll(){try{await loadAll();S.pts={};S.urls={};toast("Data diperbarui.");render(0)}catch(e){toast("Gagal memuat ulang: "+e.message)}}
+
+/* ---------- Cek otomatis dengan AI (Gemini) — khusus admin; kunci API hanya tersimpan di browser admin ---------- */
+const AIK="ctb-gemini",GAPI="https://generativelanguage.googleapis.com/v1beta/";
+const aiCfg=()=>{try{return {thr:15,...JSON.parse(store.get(AIK)||"{}")}}catch(e){return {thr:15}}};
+const aiSetCfg=c=>store.set(AIK,JSON.stringify(c));
+const aiKeyOf=s=>"ctb-ai-"+KEC.kode+"-"+s;
+function aiData(s){if(!S.ai)S.ai={};if(S.ai[s]===undefined){try{S.ai[s]=JSON.parse(store.get(aiKeyOf(s))||"null")}catch(e){S.ai[s]=null}}return S.ai[s]}
+const nNo=x=>{const d=String(x??"").replace(/\D/g,"");return d?String(+d):""};
+const mDist=(a,b)=>Math.hypot((a[0]-b[0])*111320*Math.cos(a[1]*Math.PI/180),(a[1]-b[1])*110540);
+const AI_PROMPT=`Gambar ini adalah potongan peta sensus (peta WS/WSS BPS) hasil scan. Petugas menulis NOMOR BANGUNAN dengan tangan (angka 1–4 digit, kadang dilingkari atau diberi titik) di dekat/di dalam gambar bangunan.
+Temukan SEMUA nomor bangunan tulisan tangan. Abaikan teks cetak (nama jalan, legenda, judul, kode wilayah, RT/RW, skala, koordinat, angka pada kotak judul) dan coretan yang bukan nomor.
+Jawab HANYA JSON array: [{"n":"12","box":[ymin,xmin,ymax,xmax]}], koordinat kotak dinormalkan 0–1000 terhadap gambar ini. Jika angka kurang jelas, tetap tulis tebakan terbaik dan tambahkan "ragu":true. Jika tidak ada nomor, jawab [].`;
+async function geminiModels(key){
+  const r=await fetch(GAPI+"models?pageSize=200",{headers:{"x-goog-api-key":key}});const j=await r.json();
+  if(!r.ok)throw new Error((j.error&&j.error.message)||("HTTP "+r.status));
+  return (j.models||[]).filter(m=>(m.supportedGenerationMethods||[]).includes("generateContent")&&/gemini/i.test(m.name)&&!/embed|tts|audio|image-gen|live/i.test(m.name))
+    .map(m=>({id:m.name,nm:m.displayName||m.name}));
+}
+function pickModel(list){const f=re=>list.find(m=>re.test(m.id+" "+m.nm));return (f(/argon/i)||f(/pro/i)||f(/flash/i)||list[0]||{}).id||""}
+async function geminiDetect(cfg,b64){
+  const body=JSON.stringify({contents:[{role:"user",parts:[{inline_data:{mime_type:"image/jpeg",data:b64}},{text:AI_PROMPT}]}],generationConfig:{temperature:0,responseMimeType:"application/json"}});
+  for(let att=0;att<6;att++){
+    const r=await fetch(GAPI+cfg.model+":generateContent",{method:"POST",headers:{"Content-Type":"application/json","x-goog-api-key":cfg.key},body});
+    const j=await r.json().catch(()=>({}));
+    if(r.status===429||r.status===503){const rd=JSON.stringify(j).match(/"retryDelay"\s*:\s*"(\d+)/);const w=rd?+rd[1]+1:15*(att+1);
+      aiProg(`Batas kuota Gemini tercapai, menunggu ${w} detik…`);await new Promise(x=>setTimeout(x,w*1000));continue}
+    if(!r.ok)throw new Error((j.error&&j.error.message)||("HTTP "+r.status));
+    const txt=((((j.candidates||[])[0]||{}).content||{}).parts||[]).map(p=>p.text||"").join("").replace(/^```(json)?|```$/gm,"").trim();
+    let arr=[];try{arr=JSON.parse(txt||"[]")}catch(e){const m=txt.match(/\[[\s\S]*\]/);arr=m?JSON.parse(m[0]):[]}
+    return {arr:Array.isArray(arr)?arr:[],tok:(j.usageMetadata&&j.usageMetadata.totalTokenCount)||0};
+  }
+  throw new Error("Kuota Gemini habis. Coba lagi nanti.");
+}
+function aiProg(msg,frac){const el=$("#aiProg");if(!el)return;el.hidden=false;el.querySelector("small").textContent=msg;if(frac!=null)el.querySelector("i").style.width=(frac*100).toFixed(0)+"%"}
+async function loadBitmap(url){const r=await fetch(url,{mode:"cors"});if(!r.ok)throw new Error("Gambar scan gagal dimuat");return createImageBitmap(await r.blob())}
+/* baca semua nomor di scan SLS ini → posisi lon/lat */
+async function aiRun(s){
+  const cfg=aiCfg();if(!cfg.key||!cfg.model){toast("Isi kunci API & model dulu di Admin → Pengecekan AI.",4000);return}
+  if(S._aiBusy){toast("Pengecekan AI masih berjalan.");return}
+  const ar=petaOf(s);await loadSlsDetail(s);const sc=S.urls[ar]||{};const sheets=["wss","inset"].map(j=>sc[j]).filter(Boolean);
+  if(!sheets.length){toast("SLS ini belum punya gambar scan.");return}
+  S._aiBusy=s;const t0=Date.now();let tok=0,dets=[];
+  try{
+    const jobs=[];
+    for(const r of sheets){const bmp=await loadBitmap(r.url);const W=bmp.width,H=bmp.height,n=Math.max(1,Math.ceil(Math.max(W,H)/1100)),ov=.12;
+      const tw=W/n,th=H/n;
+      for(let gy=0;gy<n;gy++)for(let gx=0;gx<n;gx++){const x0=Math.max(0,gx*tw-tw*ov),y0=Math.max(0,gy*th-th*ov),x1=Math.min(W,(gx+1)*tw+tw*ov),y1=Math.min(H,(gy+1)*th+th*ov);jobs.push({r,bmp,W,H,x0,y0,x1,y1})}}
+    for(let i=0;i<jobs.length;i++){const J=jobs[i];
+      aiProg(`Membaca potongan ${i+1}/${jobs.length} dengan ${cfg.model.replace("models/","")}…`,i/jobs.length);
+      const cw=Math.round(J.x1-J.x0),ch=Math.round(J.y1-J.y0),k=Math.min(2,1500/Math.max(cw,ch));
+      const cv=document.createElement("canvas");cv.width=Math.round(cw*k);cv.height=Math.round(ch*k);const g=cv.getContext("2d");g.imageSmoothingQuality="high";
+      g.drawImage(J.bmp,J.x0,J.y0,cw,ch,0,0,cv.width,cv.height);
+      const b64=cv.toDataURL("image/jpeg",.9).split(",")[1];cv.width=cv.height=0;
+      const {arr,tok:tk}=await geminiDetect(cfg,b64);tok+=tk;
+      for(const d of arr){const no=nNo(d.n),b=d.box||d.box_2d;if(!no||!Array.isArray(b)||b.length<4)continue;
+        const px=J.x0+((+b[1]+ +b[3])/2/1000)*cw,py=J.y0+((+b[0]+ +b[2])/2/1000)*ch,u=px/J.W,v=py/J.H,r=J.r;
+        const lng=r.tl[0]+(r.tr[0]-r.tl[0])*u+(r.bl[0]-r.tl[0])*v,lat=r.tl[1]+(r.tr[1]-r.tl[1])*u+(r.bl[1]-r.tl[1])*v;
+        dets.push({no,lng,lat,ragu:!!d.ragu,src:r.jenis})}
+    }
+    jobs.forEach(J=>J.bmp.close&&J.bmp.close());
+    /* gabungkan nomor yang sama di potongan bertumpuk / inset (≤ 6 m) */
+    const out=[];for(const d of dets){const o=out.find(x=>x.no===d.no&&mDist([x.lng,x.lat],[d.lng,d.lat])<6);if(o){o.ragu=o.ragu&&d.ragu;if(d.src==="inset"){o.lng=d.lng;o.lat=d.lat;o.src="inset"}}else out.push({...d})}
+    const data={at:new Date().toISOString(),model:cfg.model,tok,det:out,sec:Math.round((Date.now()-t0)/1000)};
+    S.ai[s]=data;store.set(aiKeyOf(s),JSON.stringify(data));
+    toast(`AI selesai: ${out.length} nomor terbaca · ${fmt(tok)} token · ${data.sec} detik.`,4500);
+  }catch(e){toast("Cek AI gagal: "+(e.message||e),6000)}
+  S._aiBusy=null;if(S.sel===s){drawPts();renderSheet()}
+}
+/* bandingkan hasil AI dengan titik digital */
+function aiCompare(s){
+  const A=aiData(s);if(!A)return null;const thr=+aiCfg().thr||15,ar=petaOf(s),mp=geomOf(ar);
+  const pts=ptsOf(s),others=S.slsIds.filter(x=>x!==s&&petaOf(x)===ar).flatMap(x=>S.pts[x]||[]);
+  const inside=d=>inPoly(d.lng,d.lat,mp);
+  const byNo={};A.det.forEach(d=>(byNo[d.no]=byNo[d.no]||[]).push(d));
+  const res={cocok:[],jauh:[],hilang:[],tanpa:[],dobel:[]};
+  for(const p of pts){const ds=byNo[nNo(p.no)]||[];
+    if(!ds.length){res.hilang.push({p});continue}
+    let best=null,bd=1e9;for(const d of ds){const m=mDist([p.x,p.y],[d.lng,d.lat]);if(m<bd){bd=m;best=d}}
+    (bd<=thr?res.cocok:res.jauh).push({p,d:best,m:bd})}
+  const known=new Set([...pts,...others].map(p=>nNo(p.no)));
+  for(const [no,ds] of Object.entries(byNo)){const inn=ds.filter(inside);if(!inn.length)continue;
+    if(!known.has(no))res.tanpa.push({no,d:inn[0],ragu:inn.every(x=>x.ragu)});
+    const far=inn.filter((d,i)=>inn.slice(0,i).every(o=>mDist([o.lng,o.lat],[d.lng,d.lat])>12));
+    if(far.length>1)res.dobel.push({no,n:far.length,ds:far})}
+  res.tanpa.sort((a,b)=>+a.no-+b.no);res.jauh.sort((a,b)=>b.m-a.m);
+  return res;
+}
+function aiHtml(s){
+  const cfg=aiCfg(),A=aiData(s),R=aiCompare(s),busy=S._aiBusy===s;
+  const head=`<div class="glass card" style="display:grid;gap:8px;margin-top:8px">
+    <div class="row between" style="gap:8px"><div><b>Cek otomatis dengan AI</b><div><small class="muted">${A?`Hasil ${tgl(A.at)} · ${esc(A.model.replace("models/",""))} · ${A.det.length} nomor terbaca · ${fmt(A.tok)} token`:"AI membaca nomor tulisan tangan di scan lalu membandingkannya dengan titik digital. Hasilnya hanya usulan."}</small></div></div>
+      <button class="btn btn-grad btn-sm" id="aiGo" type="button"${busy||!cfg.key?" disabled":""}>${busy?"Berjalan…":A?"Ulangi":"Mulai cek"}</button></div>
+    ${cfg.key?"":`<small style="color:var(--warn)">Kunci API Gemini belum diisi. Buka Admin → Pengecekan AI.</small>`}
+    <div id="aiProg" ${busy?"":"hidden"}><div class="prog"><i style="width:0%"></i></div><small class="muted">Menyiapkan…</small></div></div>`;
+  if(!R)return head;
+  const sec=(k,title,sub,items,row,bulk)=>items.length?`<div class="ai-sec"><div class="row between"><b>${title} <span class="pill p-mute">${items.length}</span></b>${bulk||""}</div><small class="muted">${sub}</small><div class="list">${items.map(row).join("")}</div></div>`:"";
+  const no=x=>`<span class="no">${esc(x)}</span>`,done=p=>{const c=S.corr[p.id];return c?`<span class="pill ${isOk(c)?"p-ok":"p-mag"}">${esc(jenisTxt(c))}</span>`:""};
+  return head+`<div class="ai-res">
+    ${sec("jauh","Berjauhan dari tulisan di scan",`Jarak lebih dari ${aiCfg().thr} m. Titik biru = digital, titik toska = posisi nomor di scan.`,R.jauh,x=>`<div class="li ai-li">${no(+x.p.no)}<span class="txt"><b>${fmt(Math.round(x.m))} m</b><small>${esc(ptTitle(x.p,""))}</small></span>${done(x.p)}<span class="ai-acts"><button class="btn btn-ghost btn-sm" data-aigo="${esc(x.p.id)}" type="button">Lihat</button><button class="btn btn-grad btn-sm" data-aimv="${esc(x.p.id)}" type="button">Pakai lokasi AI</button></span></div>`)}
+    ${sec("hilang","Tidak terbaca / tidak ada di scan","Nomor titik ini tidak ditemukan AI di gambar. Cek dulu di peta — bisa jadi tulisannya tidak terbaca.",R.hilang,x=>`<div class="li ai-li">${no(+x.p.no)}<span class="txt"><small>${esc(ptTitle(x.p,""))}</small></span>${done(x.p)}<span class="ai-acts"><button class="btn btn-ghost btn-sm" data-aigo="${esc(x.p.id)}" type="button">Lihat</button><button class="btn btn-ghost btn-sm" data-aitd="${esc(x.p.id)}" type="button">Tandai tidak ada</button></span></div>`)}
+    ${sec("tanpa","Nomor di scan tanpa titik digital","Ada tulisannya di scan (di dalam batas SLS), tapi tidak ada titik dengan nomor itu.",R.tanpa,x=>`<div class="li ai-li">${no(x.no)}<span class="txt"><small>${x.ragu?"AI ragu membaca angka ini":"terbaca jelas"}</small></span><span class="ai-acts"><button class="btn btn-ghost btn-sm" data-aill="${x.d.lat},${x.d.lng}" type="button">Lihat</button></span></div>`,`<button class="btn btn-grad btn-sm" id="aiTanpa" type="button">Jadikan temuan</button>`)}
+    ${sec("dobel","Nomor tertulis lebih dari sekali","Nomor yang sama ditulis di beberapa tempat berbeda.",R.dobel,x=>`<div class="li ai-li">${no(x.no)}<span class="txt"><b>${x.n}× di scan</b></span><span class="ai-acts"><button class="btn btn-ghost btn-sm" data-aill="${x.ds[0].lat},${x.ds[0].lng}" type="button">Lihat</button>${ptsOf(s).some(p=>nNo(p.no)===x.no)?`<button class="btn btn-ghost btn-sm" data-aidb="${x.no}|${x.n}" type="button">Tandai dobel</button>`:""}</span></div>`)}
+    ${R.cocok.length?`<div class="ai-sec"><div class="row between"><b>Cocok <span class="pill p-ok">${R.cocok.length}</span></b><button class="btn btn-ghost btn-sm" id="aiOk" type="button">Tandai yang cocok ✓ benar</button></div><small class="muted">Nomor di scan berada ≤ ${aiCfg().thr} m dari titik digitalnya.</small></div>`:""}
+  </div>`;
+}
+function bindAi(s){
+  const sh=$("#sheet");if(!sh)return;const go=$("#aiGo");if(go)go.onclick=()=>{aiRun(s);renderSheet()};
+  const fly=(lat,lng)=>{if(MOBILE())toggleSheet(true);map.flyTo([lat,lng],Math.max(map.getZoom(),19),{duration:.6})};
+  sh.querySelectorAll("[data-aigo]").forEach(b=>b.onclick=()=>{const p=ptById(b.dataset.aigo);fly(p.y,p.x);map.once("moveend",()=>openPop(p))});
+  sh.querySelectorAll("[data-aill]").forEach(b=>b.onclick=()=>{const[a,c]=b.dataset.aill.split(",").map(Number);fly(a,c)});
+  const R=aiCompare(s);if(!R)return;
+  sh.querySelectorAll("[data-aimv]").forEach(b=>b.onclick=async()=>{const x=R.jauh.find(y=>y.p.id===b.dataset.aimv);b.disabled=true;
+    await save(x.p,{jenis:"pindah",lat:x.d.lat,lng:x.d.lng,note:"Lokasi dari cek AI (scan)"},{silent:true})});
+  sh.querySelectorAll("[data-aitd]").forEach(b=>b.onclick=async()=>{const p=ptById(b.dataset.aitd);b.disabled=true;
+    await save(p,{jenis:"tidak_di_peta",note:"Nomor tidak ditemukan di scan (cek AI)"},{silent:true})});
+  sh.querySelectorAll("[data-aidb]").forEach(b=>b.onclick=async()=>{const[no,n]=b.dataset.aidb.split("|");b.disabled=true;
+    for(const p of ptsOf(s).filter(p=>nNo(p.no)===no))await save(p,{jenis:"dobel",jumlah:+n,note:`Tertulis ${n}× di scan (cek AI)`},{silent:true})});
+  const tb=$("#aiTanpa");if(tb)tb.onclick=async()=>{
+    if(!await confirmBox("Jadikan temuan?",`${R.tanpa.length} nomor (${esc(R.tanpa.map(x=>x.no).join(", "))}) masuk ke Temuan admin. PPL diminta mengecek dan menjawab.`,"Ya, jadikan temuan"))return;
+    tb.disabled=true;const rows=R.tanpa.map(x=>({idsubsls:s,jenis:"tanpa_titik",no_bang:String(+x.no).padStart(4,"0"),keterangan:"Cek AI: nomor ada di scan, titik digital tidak ada"+(x.ragu?" (AI ragu membaca angkanya)":"")}));
+    const{error}=await sb.from("temuan").upsert(rows,{onConflict:"idsubsls,jenis,no_bang",ignoreDuplicates:true});
+    if(error){toast("Gagal: "+error.message);tb.disabled=false;return}
+    const{data}=await sb.from("temuan").select("id,idsubsls,jenis,no_bang,keterangan,jawaban,dijawab_oleh").eq("idsubsls",s).order("id");S.temuan[s]=data||S.temuan[s];
+    toast(`${rows.length} nomor masuk Temuan admin.`);renderSheet()};
+  const ok=$("#aiOk");if(ok)ok.onclick=async()=>{const todo=R.cocok.filter(x=>!S.corr[x.p.id]);
+    if(!todo.length){toast("Semua titik yang cocok sudah punya status.");return}
+    if(!await confirmBox("Tandai sudah benar?",`${todo.length} titik yang posisinya cocok dengan tulisan di scan akan ditandai <b>Sudah benar</b>. Titik yang sudah punya status tidak diubah.`,"Ya, tandai"))return;
+    ok.disabled=true;const rows=todo.map(({p})=>({assignment_id:p.id,idsubsls:p.sls,no_bang:p.no,unique_bang:p.ub,jenis:"benar",lon:null,lat:null,catatan:null,oleh_email:S.me.email,status:"ok"}));
+    for(let i=0;i<rows.length;i+=500){const{data,error}=await sb.from("koreksi").upsert(rows.slice(i,i+500),{onConflict:"assignment_id"}).select();if(error){toast("Gagal: "+error.message);return}data.forEach(r=>(S.corr[r.assignment_id]=corrFromRow(r),S._corrVer=(S._corrVer||0)+1))}
+    await syncDone(s);drawPts();renderSheet();toast(`${rows.length} titik ditandai sudah benar.`)};
+}
+/* lapisan peta: posisi nomor hasil AI + garis ke titik yang berjauhan */
+function drawAi(){
+  if(!map)return;if(window.L_ai){L_ai.remove();window.L_ai=null}
+  if(S.tab!=="ai"||!isAdmin())return;const R=aiCompare(S.sel),A=aiData(S.sel);if(!R)return;
+  const g=window.L_ai=L.layerGroup();
+  A.det.forEach(d=>L.circleMarker([d.lat,d.lng],{radius:4,color:"#0b3b3a",weight:1.5,fillColor:"#22e3d6",fillOpacity:1,interactive:false})
+    .bindTooltip(d.no+(d.ragu?"?":""),{permanent:true,direction:"left",offset:[-5,0],className:"nb ai"}).addTo(g));
+  R.jauh.forEach(x=>L.polyline([[x.p.y,x.p.x],[x.d.lat,x.d.lng]],{color:"#22e3d6",weight:2,dashArray:"4 5",interactive:false}).addTo(g));
+  g.addTo(map);
+}
+/* pengaturan di menu Admin */
+function renderAiCfg(){
+  const box=$("#aiBox");if(!box)return;const c=aiCfg();
+  box.innerHTML=`<div class="peng-grid">
+      <label><small class="muted">Kunci API Gemini (dari aistudio.google.com)</small><input class="field mono" id="aiKey" type="password" autocomplete="off" placeholder="${c.key?"tersimpan ••••"+esc(c.key.slice(-4)):"AIza…"}"></label>
+      <label><small class="muted">Model</small><select class="field" id="aiModel">${c.model?`<option value="${esc(c.model)}">${esc(c.model.replace("models/",""))}</option>`:`<option value="">— muat daftar model dulu —</option>`}</select></label>
+      <label><small class="muted">Batas jarak "cocok" (meter)</small><input class="field mono" id="aiThr" inputmode="numeric" value="${c.thr||15}"></label>
+    </div>
+    <div class="row between" style="gap:8px"><small class="muted">Kunci hanya disimpan di browser ini (tidak dikirim ke database, tidak terlihat petugas lain). Gambar scan dikirim langsung dari browser ini ke Google Gemini.</small>
+      <div class="row" style="gap:6px">${c.key?`<button class="btn btn-bad btn-sm" id="aiDel" type="button">Hapus kunci</button>`:""}<button class="btn btn-ghost btn-sm" id="aiList" type="button">Muat daftar model</button><button class="btn btn-grad btn-sm" id="aiSave" type="button">Simpan</button></div></div>`;
+  const keyNow=()=>$("#aiKey").value.trim()||aiCfg().key||"";
+  $("#aiList").onclick=async e=>{const k=keyNow();if(!k){toast("Tempel kunci API dulu.");return}e.currentTarget.disabled=true;
+    try{const ls=await geminiModels(k),pick=c.model&&ls.some(m=>m.id===c.model)?c.model:pickModel(ls);
+      $("#aiModel").innerHTML=ls.map(m=>`<option value="${esc(m.id)}"${m.id===pick?" selected":""}>${esc(m.nm)} (${esc(m.id.replace("models/",""))})</option>`).join("");
+      toast(`Kunci valid · ${ls.length} model tersedia.`)}catch(err){toast("Kunci/akses gagal: "+err.message,5000)}
+    e.currentTarget&&(e.currentTarget.disabled=false)};
+  $("#aiSave").onclick=()=>{const k=keyNow(),m=$("#aiModel").value,t=Math.max(3,Math.min(100,parseInt($("#aiThr").value)||15));
+    if(!k){toast("Tempel kunci API dulu.");return}if(!m){toast("Tekan \"Muat daftar model\" lalu pilih model.");return}
+    aiSetCfg({key:k,model:m,thr:t});toast("Pengaturan AI disimpan di browser ini.");renderAiCfg()};
+  const d=$("#aiDel");if(d)d.onclick=async()=>{if(await confirmBox("Hapus kunci API?","Kunci dihapus dari browser ini. Hasil cek AI yang sudah ada tetap tersimpan.","Hapus",true)){aiSetCfg({thr:aiCfg().thr});renderAiCfg()}};
+}
 
 /* ---------- Kabupaten (koordinator kabupaten: rekap semua kecamatan, buka peta = lihat saja) ---------- */
 const pct=(a,b)=>b?Math.min(100,a/b*100):0;
@@ -544,7 +706,7 @@ function drawPts(){
   if(fp){L.polyline([[fp.y,fp.x],[S.draft.lat,S.draft.lng]],{color:"#ffd23f",weight:2,dashArray:"3 6",interactive:false}).addTo(L_cor);
     L.circleMarker([S.draft.lat,S.draft.lng],{radius:8,color:"#ffd23f",weight:3,fillColor:"#ffd23f",fillOpacity:.35,interactive:false}).addTo(L_cor)}
   if(S.showPts){L_pts.addTo(map);L_cor.addTo(map)}
-  styleMarkers();
+  styleMarkers();drawAi();
 }
 function styleMarkers(){Object.entries(ptMarkers).forEach(([id,m])=>{const sel=id===S.focus;m.setStyle({radius:sel?9:6,weight:sel?3:2});if(sel)m.bringToFront()})}
 function nearest(latlng){
@@ -768,8 +930,8 @@ function renderSheet(anim){
     } else {
       if(anim==="back")bodyCls="a-inL";
       const list=[...pts].sort((a,b)=>(b.far-a.far)||String(a.no).localeCompare(String(b.no)));
-      body=`<div class="tabs"><button type="button" class="chip ${S.tab==="titik"?"on":""}" data-t="titik">Titik (${pts.length})</button><button type="button" class="chip ${S.tab==="temuan"?"on":""}" data-t="temuan">Temuan admin (${t.tem-t.dij})</button></div>
-      <div class="${anim==="tab"?(S.tab==="temuan"?"a-inR":"a-inL"):""}">${S.tab==="titik"?(list.length?`<div class="list">${list.map(p=>liHtml(p,ed)).join("")}</div>`:`<div class="empty">SLS ini tidak punya titik bangunan.</div>`):(tanpaForm(ed)+(tem.length?`<div class="list">${tem.map(x=>{const lab=TEM[x.jenis]||[x.jenis,"mag",""];
+      body=`<div class="tabs"><button type="button" class="chip ${S.tab==="titik"?"on":""}" data-t="titik">Titik (${pts.length})</button><button type="button" class="chip ${S.tab==="temuan"?"on":""}" data-t="temuan">Temuan admin (${t.tem-t.dij})</button>${isAdmin()?`<button type="button" class="chip ${S.tab==="ai"?"on":""}" data-t="ai">✦ AI</button>`:""}</div>
+      <div class="${anim==="tab"?(S.tab==="temuan"?"a-inR":"a-inL"):""}">${S.tab==="ai"?aiHtml(s):S.tab==="titik"?(list.length?`<div class="list">${list.map(p=>liHtml(p,ed)).join("")}</div>`:`<div class="empty">SLS ini tidak punya titik bangunan.</div>`):(tanpaForm(ed)+(tem.length?`<div class="list">${tem.map(x=>{const lab=TEM[x.jenis]||[x.jenis,"mag",""];
         return `<div class="li" style="display:grid;gap:6px"><div class="row" style="gap:9px;flex-wrap:nowrap"><span class="no ${lab[1]}">${esc(+x.no_bang||x.no_bang)}</span><span class="txt"><b>${lab[0]}</b><small>${esc(x.keterangan||lab[2])}</small></span></div>
          ${x.jawaban?`<div class="row between"><small class="muted">Jawaban: ${esc(x.jawaban)} — ${esc(nameOf(x.dijawab_oleh))}</small><button class="link" data-reans="${x.id}" type="button" style="font-size:11px;color:var(--muted);text-decoration:underline">ubah</button></div>`:`<div class="row" style="gap:6px;flex-wrap:nowrap"><input class="field ans" data-i="${x.id}" placeholder="Jawaban singkat" style="flex:1;min-width:0"><button class="btn btn-grad btn-sm" data-ans="${x.id}" type="button">Kirim</button></div>`}</div>`}).join("")}</div>`:`<div class="empty">Tidak ada temuan admin untuk SLS ini.</div>`))}</div>
       ${ed?`<button class="btn ${t.done?"btn-done":"btn-grad"}" id="doneBtn" type="button" style="width:100%">${t.done?(pts.length?"✓ SLS ini sudah saya cek, semua benar":"✓ SLS ini sudah benar (tidak ada bangunan)"):(pts.length?"Nyatakan SLS ini sudah beres (semua benar)":"SLS ini sudah benar (tidak ada bangunan)")}</button>`:(t.done?`<div class="pill p-ok" style="justify-self:center">✓ SLS ini sudah dicek, ${pts.length?"semua benar":"tidak ada bangunan"}</div>`:"")}`;
@@ -780,7 +942,9 @@ function renderSheet(anim){
   S._shKey=s+"|"+S.tab+"|"+(S.detail||"");if(keep){const nb=sh.querySelector(".sheet-body");if(nb)nb.scrollTop=keep}
   const fabs=$("#fabs");if(fabs)requestAnimationFrame(()=>fabs.style.setProperty("--fab-b",(MOBILE()?(S.minSheet?sh.querySelector(".sheet-bar").offsetHeight:Math.min(sh.scrollHeight,innerHeight*.58))+22:20)+"px"));
   $("#sheetBar").onclick=()=>toggleSheet(!S.minSheet);
+  if(S.tab==="ai"&&!isAdmin())S.tab="titik";drawAi();
   if(S.minSheet)return;
+  if(S.tab==="ai")bindAi(s);
   const bl=$("#backList");if(bl)bl.onclick=()=>{S.detail=null;renderSheet("back")};
   sh.querySelectorAll("[data-t]").forEach(b=>b.onclick=()=>{if(S.tab===b.dataset.t)return;S.tab=b.dataset.t;renderSheet("tab")});
   sh.querySelectorAll("[data-p]").forEach(b=>b.onclick=()=>{const p=ptById(b.dataset.p);S.draft=null;S.kend=null;
@@ -982,6 +1146,10 @@ function vAdmin(){
       <div class="section-h"><h2>Pengaturan kecamatan</h2><small class="muted">Dipakai untuk memeriksa file impor (jumlah titik & SLS harus sama) dan nama file unduhan.</small></div>
       <div class="glass card" id="pengBox"></div>
     </section>
+    <section style="display:grid;gap:10px;--i:2">
+      <div class="section-h"><h2>Pengecekan AI (Gemini)</h2><small class="muted">Untuk tombol "✦ AI" di panel SLS pada halaman Peta: AI membaca nomor tulisan tangan di scan dan membandingkannya dengan titik digital.</small></div>
+      <div class="glass card" id="aiBox"></div>
+    </section>
     ${IS_HUB?`<section style="display:grid;gap:10px;--i:2">
       <div class="section-h"><h2>Daftar kecamatan</h2><small class="muted">Khusus pusat. Kecamatan yang aktif muncul di pilihan login dan di menu Kabupaten.</small></div>
       <div class="glass card" id="regBox"><small class="muted">Memuat…</small></div>
@@ -1004,7 +1172,7 @@ function vAdmin(){
     </section>
   </div></div>`;
   $("#view").querySelectorAll("input[data-imp]").forEach(inp=>inp.onchange=()=>{const files=[...inp.files];inp.value="";if(files.length)runImport(inp.dataset.imp,files)});
-  $("#dlAll").onclick=()=>exportKoreksi(false);$("#dlTem").onclick=exportTemuan;loadMem();renderPeng();if(IS_HUB)loadHubAdm();
+  $("#dlAll").onclick=()=>exportKoreksi(false);$("#dlTem").onclick=exportTemuan;loadMem();renderPeng();renderAiCfg();if(IS_HUB)loadHubAdm();
   $("#view").querySelectorAll("[data-akses]").forEach(sel=>sel.onchange=async()=>{
     const em=sel.dataset.akses,v=sel.value||null;sel.disabled=true;
     const{error}=await sb.from("petugas").update({akses:v}).eq("email",em);sel.disabled=false;
