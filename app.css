@@ -654,107 +654,147 @@ html body .app.on-peta .view .sheet .li-acts button.on{color:#fff!important}
 @media (max-width:420px){.ai-li{flex-wrap:wrap}.ai-acts{width:100%;justify-content:flex-end}}
 
 /* =====================================================================
-   v33 TEMA BARU — hijau tua + lime, kartu terang berbingkai tegas,
-   bayangan padat (tanpa blur), tanpa kaca/3D: ringan & jelas
+   v36 TEMA "KERTAS & LIME" — kertas terang / hijau tua, bingkai tinta tegas,
+   bayangan padat, ikon menu kotak berwarna, stabilo lime, tulisan tangan.
+   Semua tanpa blur/kaca/3D → ringan di HP.
    ===================================================================== */
-:root{
-  /* halaman (gelap) */
-  --bg:#0e211b; --page-fg:#f3f6f2; --page-muted:#b9c8bf; --grid:rgba(214,238,48,.055);
-  /* kartu (terang) */
-  --card:#f3f6f2; --card2:#e8ede6; --ink:#0a0f0d; --ink2:#33403a; --ink3:#5b6a62; --edge:#0a0f0d;
-  --lime:#d6ee30; --forest:#122922; --hard:4px 5px 0 rgba(5,10,8,.55); --hard-sm:2px 3px 0 rgba(5,10,8,.5);
-  --fg:var(--page-fg); --muted:var(--page-muted); --dim:#93a69b;
-  --line:rgba(10,15,13,.22); --line2:rgba(10,15,13,.38); --field:#ffffff; --soft:var(--card2); --map-bg:#0e211b;
+:root,:root.light{
+  --paper:#f7f7f2; --paper-deep:#ecece4; --card:#ffffff; --card2:#f7f7f2; --rule:rgba(15,46,31,.13);
+  --ink:#0a0f0d; --ink2:#3d4a44; --ink3:#6b7a72; --edge:#0a0f0d; --evergreen:#122922; --teal:#3f8f77;
+  --lime:#c9ff5c; --lime-deep:#b3ee3f; --on-lime:#0a0f0d;
+  --hard:4px 4px 0 rgba(10,15,13,.85); --hard-sm:2px 2px 0 rgba(10,15,13,.85);
+  --t-yellow:#ffd23f; --t-lime:#c9ff5c; --t-orange:#ff9d6e; --t-pink:#ffb3e6; --t-blue:#a8e6ff; --t-mint:#8affc1; --t-purple:#c9a0ff; --t-rose:#ff8fb1;
+  --bg:var(--paper); --fg:var(--ink); --muted:var(--ink2); --dim:var(--ink3);
+  --line:rgba(10,15,13,.18); --line2:rgba(10,15,13,.42); --field:#ffffff; --soft:var(--card2); --map-bg:#e8ece4;
   --ok:#15803d; --warn:#b45309; --bad:#dc2626; --cyan:#0e7490; --magenta:#a21caf; --violet:#6d28d9;
-  --acc:#122922; --grad:var(--lime);
-  --font:system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans",sans-serif;
+  --acc:var(--evergreen); --grad:var(--lime);
+  --font:"Stack Sans Headline",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --body:system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans",sans-serif;
+  --hand:"Caveat","Segoe Print","Bradley Hand",cursive;
   --mono:ui-monospace,"Cascadia Mono",Consolas,"Roboto Mono",monospace;
-  --r:14px; --r-sm:10px; --shadow:rgba(5,10,8,.45);
-  color-scheme:dark;
-}
-:root.light{
-  --bg:#f3f6f2; --page-fg:#0a0f0d; --page-muted:#3d4a44; --grid:rgba(10,15,13,.05);
-  --card:#ffffff; --card2:#f1f4ef; --dim:#5b6a62; --map-bg:#e5ebe3;
-  --hard:4px 5px 0 rgba(10,15,13,.85); --hard-sm:2px 3px 0 rgba(10,15,13,.8);
+  --r:14px; --r-sm:10px; --shadow:rgba(10,15,13,.18);
   color-scheme:light;
 }
-body{background:var(--bg)!important;transition:none!important;font-size:13px;
-  background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px)!important;background-size:56px 56px!important}
+:root:not(.light){
+  --paper:#16211d; --paper-deep:#121b17; --card:#1d2b26; --card2:#22342c; --rule:rgba(238,245,238,.09);
+  --ink:#eef5ee; --ink2:#a7bfb3; --ink3:#83998d; --edge:rgba(238,245,238,.8); --evergreen:#d9ece1; --teal:#7fd1b4;
+  --hard:4px 4px 0 #050807; --hard-sm:2px 2px 0 #050807;
+  --line:rgba(238,245,238,.16); --line2:rgba(238,245,238,.38); --field:#121b17; --map-bg:#16211d;
+  --ok:#8affc1; --warn:#ffd23f; --bad:#ff8fb1; --cyan:#a8e6ff; --magenta:#ffb3e6; --violet:#c9a0ff;
+  --shadow:rgba(0,0,0,.5);
+  color-scheme:dark;
+}
+html,body{font-family:var(--body)}
+body{background:var(--paper)!important;color:var(--ink);transition:none!important;font-size:13px;
+  background-image:radial-gradient(var(--rule) 1px,transparent 1.4px)!important;background-size:22px 22px!important}
 body::after{display:none!important;animation:none!important}
+h1,h2,h3,.kpi b,.sheet-bar b,.group-h b,.login-card h1{font-family:var(--font);font-weight:700;letter-spacing:-.025em}
+h1{font-size:22px;line-height:1.1}
+h2{font-size:15.5px}
 /* gerak dekoratif dimatikan */
 .stagger>*,.a-inR,.a-inL,.a-up,.a-down,.a-grow,.a-zoom,.a-out-zoom,.a-out-down,.nav{animation:none!important}
 *,*::before,*::after{transition-duration:.1s!important;transition-delay:0s!important}
 *{text-shadow:none!important}
-/* ---- kartu: terang, bingkai tegas, bayangan padat ---- */
+
+/* ---- kartu: bingkai tinta 2px, bayangan padat ---- */
 .glass,.glass.solid,.glass.tilt,.modal-card,.modal-card.glass.solid,.pick-pop.glass.solid,
 .on-peta .view .glass,.on-peta .view .glass.solid,.on-peta .view .pick-pop.glass.solid,.app:not(.on-peta) .view .glass,.app:not(.on-peta) .view .glass.solid,.login .glass,.login .glass.solid{
-  --fg:var(--ink);--muted:var(--ink2);--dim:var(--ink3);color:var(--ink);
-  background:var(--card)!important;border:2px solid var(--edge)!important;box-shadow:var(--hard)!important;border-radius:var(--r)!important;
+  color:var(--ink);background:var(--card)!important;border:2px solid var(--edge)!important;box-shadow:var(--hard)!important;border-radius:var(--r)!important;
   backdrop-filter:none!important;-webkit-backdrop-filter:none!important;transform:none!important;filter:none!important}
-.sls-row,.li,.group.sub,.pick-btn{--fg:var(--ink);--muted:var(--ink2);--dim:var(--ink3);color:var(--ink);
-  background:var(--card2)!important;border:1.5px solid var(--line2)!important;box-shadow:none!important;backdrop-filter:none!important;transform:none!important}
-.sls-row:hover,.li:hover{border-color:var(--edge)!important}
+.sls-row,.li,.group.sub,.pick-btn{color:var(--ink);background:var(--card2)!important;border:1.5px solid var(--line2)!important;box-shadow:none!important;backdrop-filter:none!important;transform:none!important}
+.sls-row:hover,.li:hover{border-color:var(--edge)!important;background:var(--card)!important}
 .glass::before,.glass::after,.sls-row::before,.sls-row::after,.li::before,.li::after,.group.sub::before,.group.sub::after,
 .btn-ghost::before,.btn-ghost::after,.chip::before,.chip::after,.top-actions .icon-btn::before,.top-actions .icon-btn::after,
 .pick-btn::before,.pick-btn::after,.nav::before,.nav::after,.btn-grad::before,.btn-grad::after,.btn.danger::after{display:none!important}
-.kpi b{color:var(--ink)}
+/* selotip hijau di atas kartu masuk & KPI pertama */
+.login-card{position:relative;overflow:visible!important}
+.login-card::before{content:"";display:block!important;position:absolute;top:-11px;left:50%;width:96px;height:20px;transform:translateX(-50%) rotate(-2deg)!important;
+  background:color-mix(in srgb,var(--teal) 70%,transparent);border-radius:2px;z-index:2;opacity:1!important;inset:auto auto auto 50%}
+.kpi small{color:var(--ink2)}
+.kpi b{font-size:26px!important;color:var(--ink)}
+
+/* ---- tipografi khas ---- */
+.eyebrow{font-family:var(--body);font-weight:800;letter-spacing:.06em}
+.hello .eyebrow{display:inline-flex;align-items:center;gap:6px;background:var(--ink);color:var(--lime)!important;border-radius:999px;padding:4px 12px;transform:rotate(-1.5deg);font-size:10.5px;box-shadow:0 2px 0 rgba(10,15,13,.18)}
+:root:not(.light) .hello .eyebrow{background:#0a0f0d}
+.hl{display:inline-block;background:var(--lime);color:#0a0f0d;border-radius:7px;padding:0 .3em .06em;box-shadow:3px 3px 0 rgba(10,15,13,.35);transform:skewX(-4deg)}
+:root:not(.light) .hl{box-shadow:3px 3px 0 #050807}
+.ul{box-shadow:inset 0 -.42em 0 color-mix(in srgb,var(--lime) 85%,transparent);color:inherit}
+:root:not(.light) .ul{box-shadow:none;color:var(--lime)}
+.hand,.section-h small,.hello+.hand{font-family:var(--hand)!important;font-size:16.5px!important;font-weight:700;color:var(--teal)!important;letter-spacing:0;line-height:1.15}
+.mono,.kpi b{font-family:var(--mono)}
+
 /* ---- tombol ---- */
-.btn,.chip{transform:none!important}
+.btn,.chip{transform:none!important;font-family:var(--body)}
 .btn:hover,.chip:hover{filter:none!important;transform:translate(-1px,-1px)!important}
-.btn:active,.chip:active{transform:translate(1px,1px)!important}
-.btn{height:32px;padding:0 14px;border-radius:999px;font-weight:750}
-.btn-sm{height:28px;padding:0 11px}
-.btn-grad{background:var(--lime)!important;color:var(--ink)!important;border:2px solid var(--edge)!important;box-shadow:var(--hard-sm)!important}
-.btn-ghost,.top-actions .icon-btn{--fg:var(--ink);color:var(--ink)!important;background:var(--card)!important;border:2px solid var(--edge)!important;box-shadow:var(--hard-sm)!important;backdrop-filter:none!important}
-.btn-done{background:var(--forest)!important;color:var(--lime)!important;border:2px solid var(--edge)!important;box-shadow:var(--hard-sm)!important}
-.btn-bad{background:#fff!important;color:var(--bad)!important;border:2px solid var(--bad)!important;box-shadow:none!important}
-.btn-ok{background:#fff!important;color:var(--ok)!important;border:2px solid var(--ok)!important}
-.chip{height:27px;border-radius:999px;padding:0 11px;background:var(--card)!important;color:var(--ink)!important;border:1.5px solid var(--edge)!important;box-shadow:none!important}
-.chip.on{background:var(--ink)!important;color:var(--lime)!important;border-color:var(--ink)!important;box-shadow:none!important}
-.pill{border-radius:999px;font-weight:750}
-/* ---- kolom isian ---- */
-textarea,.field{background:var(--field)!important;color:var(--ink)!important;box-shadow:none!important;border:1.5px solid var(--edge)!important;border-radius:10px}
-.field::placeholder,textarea::placeholder{color:#6b7a72}
-/* ---- menu ---- */
-.nav{background:var(--ink)!important;border:2px solid var(--ink)!important;box-shadow:var(--hard)!important;backdrop-filter:none!important}
-.nav button{color:#a9b8af!important}
-.nav button,.nav button svg{transition:none!important;transform:none!important;filter:none!important}
-.nav button.on{color:var(--ink)!important}
-.nav-ind{background:var(--lime)!important;box-shadow:none!important;transition:transform .15s,width .15s,height .15s!important}
-@media (max-width:959px){.nav{border-radius:999px!important}}
-@media (min-width:960px){.nav{border-radius:0!important;border-width:0 2px 0 0!important;box-shadow:none!important}}
-.logo{background:var(--lime)!important;box-shadow:var(--hard-sm)!important;border:2px solid var(--edge)}
-.logo svg,.brand svg{stroke:var(--ink)!important}
+.btn:active,.chip:active{transform:translate(1px,1px)!important;box-shadow:none!important}
+.btn{height:33px;padding:0 15px;border-radius:999px;font-weight:800}
+.btn-sm{height:29px;padding:0 12px}
+.btn-grad{background:var(--lime)!important;color:#0a0f0d!important;border:2px solid #0a0f0d!important;box-shadow:var(--hard-sm)!important}
+.btn-ghost,.top-actions .icon-btn,.top-actions .btn:not(.btn-grad){color:var(--ink)!important;background:var(--card)!important;border:2px solid var(--edge)!important;box-shadow:var(--hard-sm)!important;backdrop-filter:none!important;opacity:1!important}
+.btn-done{background:#0a0f0d!important;color:var(--lime)!important;border:2px solid #0a0f0d!important;box-shadow:var(--hard-sm)!important}
+:root:not(.light) .btn-done{border-color:var(--lime)!important}
+.btn-bad{background:var(--card)!important;color:var(--bad)!important;border:2px solid var(--bad)!important;box-shadow:none!important}
+.btn-ok{background:var(--card)!important;color:var(--ok)!important;border:2px solid var(--ok)!important}
+.chip{height:29px;border-radius:999px;padding:0 13px;background:transparent!important;color:var(--ink2)!important;border:2px solid var(--line2)!important;box-shadow:none!important;font-weight:700}
+.chip.on{background:var(--ink)!important;color:var(--paper)!important;border-color:var(--ink)!important}
+:root.light .chip.on{color:var(--lime)!important}
+:root:not(.light) .chip.on{background:var(--lime)!important;color:#0a0f0d!important;border-color:var(--lime)!important}
+.pill{border-radius:999px;font-weight:800}
+
+/* ---- isian ---- */
+textarea,.field{background:var(--field)!important;color:var(--ink)!important;box-shadow:none!important;border:2px solid var(--edge)!important;border-radius:11px}
+.field::placeholder,textarea::placeholder{color:var(--ink3)}
+input[type=range]{accent-color:var(--evergreen)!important}
+:root:not(.light) input[type=range]{accent-color:var(--lime)!important}
+
+/* ---- menu: ikon kotak berwarna, miring sedikit ---- */
+.nav{background:var(--paper)!important;border:2px solid var(--edge)!important;box-shadow:var(--hard)!important;backdrop-filter:none!important}
+.nav button{color:var(--ink2)!important;font-weight:700;gap:4px!important}
+.nav button,.nav button svg{transition:none!important;filter:none!important}
+.nav button.on{color:var(--ink)!important;font-weight:800}
+.nav-ind{display:none!important}
+.tile{display:grid;place-items:center;width:30px;height:30px;border-radius:10px;border:2px solid #0a0f0d;box-shadow:2px 2px 0 rgba(10,15,13,.85);color:#0a0f0d;transform:rotate(-3deg)}
+.tile svg{width:16px!important;height:16px!important;stroke:#0a0f0d!important;transform:none!important}
+.t-beranda{background:var(--t-yellow)}.t-peta{background:var(--t-lime)}.t-koreksi{background:var(--t-orange)}.t-admin{background:var(--t-purple)}.t-keluar{background:var(--t-rose)}
+.nav button.on .tile{transform:rotate(0) translate(-1px,-1px);box-shadow:3px 3px 0 #0a0f0d;outline:2px solid var(--lime);outline-offset:2px}
+:root.light .nav button.on .tile{outline-color:#0a0f0d}
+.nav button:active .tile{transform:translate(1px,1px);box-shadow:none}
+@media (max-width:959px){.nav{border-radius:999px!important;padding:5px 8px!important}.nav button{padding:3px 6px!important;font-size:9.5px!important;min-width:52px}}
+@media (min-width:960px){.nav{border-radius:0!important;border-width:0 2px 0 0!important;box-shadow:none!important;padding:14px 6px!important;gap:10px!important}
+  .nav button{padding:4px 2px!important;font-size:10px!important}.tile{width:34px;height:34px}.tile svg{width:17px!important;height:17px!important}}
+.logo{background:var(--lime)!important;box-shadow:var(--hard-sm)!important;border:2px solid #0a0f0d;transform:rotate(-3deg)}
+.logo svg,.brand svg{stroke:#0a0f0d!important}
+
 /* ---- lain-lain ---- */
-.toast{background:var(--ink)!important;color:#f3f6f2!important;border:2px solid var(--lime)!important;box-shadow:var(--hard)!important;backdrop-filter:none!important}
-.modal-wrap{backdrop-filter:none!important;-webkit-backdrop-filter:none!important;background:rgba(5,10,8,.6)!important}
-.prog{background:var(--card2);border:1.5px solid var(--edge);border-radius:999px}
-.prog i{background:var(--forest);border-radius:999px}
-th{background:var(--card2)!important;color:var(--ink2)!important;backdrop-filter:none!important}
-.tbl-wrap{--fg:var(--ink);--muted:var(--ink2);color:var(--ink)}
-.pp .leaflet-popup-content-wrapper,.pp .leaflet-popup-tip{--fg:var(--ink);--muted:var(--ink2);color:var(--ink);background:var(--card)!important;border:2px solid var(--edge)!important;backdrop-filter:none!important;box-shadow:var(--hard)!important}
-.on-peta :is(.map-head,.mini-head,.sheet,.place-banner,.leaflet-popup) :not(.pill,.pill *,.btn-grad,.btn-grad *,.btn-done,.btn-done *,.li-acts button.on,.chip.on,.chip.on *,.seg button.on,.btn.danger,.btn.danger *,.no,.no *,.nb,input,textarea){color:var(--ink)!important}
+.toast{background:#0a0f0d!important;color:#f3f6f2!important;border:2px solid var(--lime)!important;box-shadow:var(--hard)!important;backdrop-filter:none!important;font-weight:700}
+.modal-wrap{backdrop-filter:none!important;-webkit-backdrop-filter:none!important;background:rgba(10,15,13,.55)!important}
+.prog{background:var(--paper-deep);border:1.5px solid var(--edge);border-radius:999px;height:9px!important}
+.prog i{background:var(--lime);border-right:1.5px solid #0a0f0d;border-radius:999px}
+th{background:var(--paper-deep)!important;color:var(--ink2)!important;backdrop-filter:none!important}
+.pp .leaflet-popup-content-wrapper,.pp .leaflet-popup-tip{color:var(--ink);background:var(--card)!important;border:2px solid var(--edge)!important;backdrop-filter:none!important;box-shadow:var(--hard)!important}
+.on-peta :is(.map-head,.mini-head,.sheet,.place-banner,.leaflet-popup) :not(.pill,.pill *,.btn-grad,.btn-grad *,.btn-done,.btn-done *,.li-acts button.on,.chip.on,.chip.on *,.seg button.on,.btn.danger,.btn.danger *,.no,.no *,.nb,.tile,.tile *,input,textarea){color:var(--ink)!important}
 .on-peta :is(.map-head,.sheet,.place-banner,.leaflet-popup) .pill{background:var(--card2)!important}
-.on-peta :is(.sheet,.leaflet-popup) .no{background:var(--ink)!important;color:var(--lime)!important}
-.no{background:var(--ink);color:var(--lime)}
+.on-peta :is(.map-head,.sheet) .pill{font-weight:800}
+.no,.on-peta :is(.sheet,.leaflet-popup) .no{background:#0a0f0d!important;color:var(--lime)!important;border-radius:7px}
+.spinner{border-color:var(--paper-deep)!important;border-top-color:var(--lime)!important}
+:root.light .spinner{border-top-color:var(--evergreen)!important}
 /* rapat */
 .wrap{gap:12px}
-.scroll{padding-block:12px 92px}
-.card{padding:11px 13px;gap:8px}
-.kpi{padding:10px 12px}
-.group-h{padding:8px 10px}
+.scroll{padding-block:12px 96px}
+.card{padding:12px 14px;gap:8px}
+.kpi{padding:10px 13px}
+.group-h{padding:9px 11px}
 .group.sub>.group-h{padding:6px 9px}
-.sls-row{padding:6px 8px;gap:8px;border-radius:10px}
-.li{padding:6px 8px;border-radius:10px}
-.map-head{padding:7px 9px;gap:6px}
-.login-card{padding:18px;gap:14px}
-h1{font-size:19px;font-weight:800;letter-spacing:-.02em}
-.hello .eyebrow{color:var(--lime)}
-:root.light .hello .eyebrow{color:var(--forest)}
-.top-actions .btn:not(.btn-grad){color:var(--ink)!important;background:var(--card)!important;border:2px solid var(--edge)!important;box-shadow:var(--hard-sm)!important;opacity:1!important}
-.top-actions .btn:not(.btn-grad) svg{stroke:var(--ink)}
-:root .sls-row,:root .li,:root .group.sub,:root.light .sls-row,:root.light .li,:root.light .group.sub{border-color:var(--line2)!important}
-:root.light .hello h1,:root.light .section-h h2{color:var(--ink)}
-input[type=range]{accent-color:var(--forest)!important}
-.spinner{border-color:rgba(214,238,48,.25)!important;border-top-color:var(--lime)!important}
-.on-peta :is(.map-head,.sheet) .pill{font-weight:800}
+.sls-row{padding:7px 9px;gap:8px;border-radius:11px}
+.li{padding:6px 8px;border-radius:11px}
+.map-head{padding:8px 10px;gap:6px}
+.login-card{padding:22px 18px 18px;gap:14px}
+/* panel di atas peta: harus solid (menimpa aturan kaca lama yang lebih spesifik) */
+html:root .app.on-peta .view .glass.glass,html:root.light .app.on-peta .view .glass.glass,
+html:root .app.on-peta .view .glass.solid.solid,html:root.light .app.on-peta .view .glass.solid.solid{
+  background:var(--card)!important;background-image:none!important;border:2px solid var(--edge)!important;box-shadow:var(--hard)!important;backdrop-filter:none!important}
+html:root .app.on-peta .view .pick-pop.glass,html:root.light .app.on-peta .view .pick-pop.glass{background:var(--card)!important}
+.seg button.on,html:root .on-peta .seg button.on{background:var(--lime)!important;color:#0a0f0d!important;border:1.5px solid #0a0f0d!important;box-shadow:none!important}
+.seg{background:var(--card2)!important;border:2px solid var(--edge)!important;box-shadow:none!important}
+.seg button:not(.on){color:var(--ink2)!important}

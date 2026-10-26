@@ -10,7 +10,7 @@ const NAMA_KEC = () => (S.cfg && S.cfg.nama_kec) || KEC.nama;
 const TARGET_TITIK_ = () => +(S.cfg && S.cfg.target_titik) || 0;
 const TARGET_SLS_ = () => +(S.cfg && S.cfg.target_sls) || 0;
 /* naikkan bersama ?v= di index.html dan nama cache di sw.js setiap rilis */
-const VERSI = "35", VERSI_TGL = "26 Okt 2026";
+const VERSI = "36", VERSI_TGL = "26 Okt 2026";
 const MOBILE = () => innerWidth < 960;
 const S = {
   me: null, view: "beranda", sel: null, scan: "wss", opac: .85, showPts: true, showBatas: true, base: "sat",
@@ -58,9 +58,9 @@ const REV={menunggu:["Tersimpan","p-ok"],disetujui:["Tersimpan","p-ok"],ditolak:
 const TEM={tanpa_titik:["Nomor tanpa titik","mag","Nomor ada di gambar peta, tetapi tidak ada titik digitalnya"],tidak_di_peta:["Titik tidak di peta","mag","Titik digital ada, tetapi nomornya tidak ditemukan di gambar peta"],dobel:["Nomor dobel di peta","warn","Nomor yang sama ditulis lebih dari sekali di gambar peta"]};
 
 /* ---------- Tema ---------- */
-function applyTheme(){document.documentElement.classList.toggle("light",S.theme==="light");document.querySelectorAll('meta[name="theme-color"]').forEach(m=>m.setAttribute("content",S.theme==="light"?"#f3f4f6":"#0f1115"));
+function applyTheme(){document.documentElement.classList.toggle("light",S.theme==="light");document.querySelectorAll('meta[name="theme-color"]').forEach(m=>m.setAttribute("content",S.theme==="light"?"#f7f7f2":"#16211d"));
   document.querySelectorAll(".theme-toggle").forEach(b=>{b.innerHTML=S.theme==="light"?ICON.moon:ICON.sun;const l=S.theme==="light"?"Pakai tema gelap":"Pakai tema terang";b.setAttribute("aria-label",l);b.title=l});
-  const m=document.querySelector('meta[name="theme-color"]');if(m)m.content=S.theme==="light"?"#f3f4f6":"#0f1115"}
+  const m=document.querySelector('meta[name="theme-color"]');if(m)m.content=S.theme==="light"?"#f7f7f2":"#16211d"}
 document.addEventListener("click",e=>{if(e.target.closest(".theme-toggle")){S.theme=S.theme==="light"?"dark":"light";store.set("ctb-theme",S.theme);applyTheme();if(map)drawPts()}});
 applyTheme();
 
@@ -224,8 +224,8 @@ function render(dir){$("#app").classList.toggle("on-peta",S.view==="peta");
   if(isAdmin())items.push(["admin","Admin",ICON.admin]);
   const nav=$("#nav"),key=items.map(i=>i[0]).join();
   if(nav.dataset.k!==key){nav.dataset.k=key;nav.innerHTML=`<span class="nav-ind" aria-hidden="true"></span><div class="brand"><div class="logo" style="width:38px;height:38px;border-radius:12px"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg></div></div>`+
-    items.map(([k,l,ic])=>`<button type="button" data-v="${k}" class="${S.view===k?"on":""}">${ic}<span>${l}</span></button>`).join("")+
-    `<button type="button" data-v="keluar">${ICON.out}<span>Keluar</span></button>`}
+    items.map(([k,l,ic])=>`<button type="button" data-v="${k}" class="${S.view===k?"on":""}"><span class="tile t-${k}">${ic}</span><span>${l}</span></button>`).join("")+
+    `<button type="button" data-v="keluar"><span class="tile t-keluar">${ICON.out}</span><span>Keluar</span></button>`}
   nav.querySelectorAll("[data-v]").forEach(b=>b.classList.toggle("on",b.dataset.v===S.view));moveInd(true);
   if(S.view!=="peta")destroyMap();
   ({beranda:vBeranda,peta:vPeta,koreksi:vKoreksi,admin:vAdmin})[S.view]();
@@ -439,7 +439,7 @@ function vBeranda(){
   const groups=groupsFor(sl);if(groups.length===1)S.open[groups[0].k]=true;
   const nBatas=sl.filter(id=>S.sls[id].berubah_batas).length;
   $("#view").innerHTML=`<div class="scroll"><div class="wrap stagger">
-    <div class="hello" style="--i:0"><div><div class="eyebrow">${esc(u.peran==="KOORDINATOR"?"Koordinator":u.admin&&u.peran!=="ADMIN"?u.peran+" · Admin":u.peran)}</div><h1>Halo, ${esc((u.nama||"").split(" ")[0])}</h1></div>
+    <div class="hello" style="--i:0"><div><div class="eyebrow">${esc(u.peran==="KOORDINATOR"?"Koordinator":u.admin&&u.peran!=="ADMIN"?u.peran+" · Admin":u.peran)}</div><h1>Halo, <span class="hl">${esc((u.nama||"").split(" ")[0])}</span></h1>${(()=>{const d=new Date().toDateString(),n=Object.values(S.corr).filter(c=>c.by===S.me.email&&c.at&&new Date(c.at).toDateString()===d).length;return `<div class="hand" style="margin-top:6px">${n?`hari ini kamu sudah memeriksa ${fmt(n)} titik — lanjut!`:"yuk mulai cek titik hari ini, satu per satu"}</div>`})()}</div>
       <div class="top-actions"><button class="icon-btn" id="rfBtn" type="button" aria-label="Muat ulang data" title="Muat ulang data">${ICON.refresh}</button><button class="btn btn-sm" id="insBtn" type="button">${small(ICON.install)}Pasang</button><button class="icon-btn theme-toggle" type="button"></button></div></div>
     <div class="kpis" style="--i:1">
       <div class="glass kpi"><small>SLS</small><b class="mono">${fmt(sl.length)}</b><small>${tot.done} beres · <span style="color:var(--cyan)">${nBatas} berubah batas</span></small></div>
