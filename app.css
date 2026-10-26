@@ -854,3 +854,36 @@ html:root .app.on-peta .view .pick-pop.glass,html:root.light .app.on-peta .view 
   transform:translateX(-50%) rotate(-1.5deg)!important;background:color-mix(in srgb,var(--teal) 72%,transparent)!important;border:0!important;border-radius:2px!important;
   opacity:1!important;-webkit-mask:none!important;mask:none!important;box-shadow:none!important;filter:none!important;z-index:3!important;padding:0!important}
 .group-h .t>b{display:table!important}
+
+/* ===================== v38 POPUP PILIH SLS ===================== */
+html:root .pick-pop.glass,html:root.light .pick-pop.glass{background:var(--card)!important;border:2px solid var(--edge)!important;box-shadow:var(--hard)!important;border-radius:14px!important;padding:8px!important}
+.pick-pop .pk-q{height:32px!important;font-size:12px!important;border:2px solid var(--edge)!important;border-radius:999px!important;padding:0 14px!important}
+.pk-list{gap:6px!important;padding:4px 4px 6px 2px!important}
+.pk-g,:root.light .pk-g{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:8px 2px 4px!important;text-transform:none!important;letter-spacing:0!important;background:var(--card)!important}
+.pk-d{background:#0a0f0d;color:var(--lime);border-radius:999px;padding:3px 11px;font:800 11px/1.2 var(--font);transform:rotate(-1.5deg)}
+.pk-u{background:var(--card);color:var(--ink);border:2px solid var(--edge);border-radius:999px;padding:1px 9px;font:800 10.5px/1.2 var(--font)}
+.pk-i,html:root .on-peta .pk-i{--ink:#0a0f0d;color:#0a0f0d!important;background:var(--lemon)!important;border:2px solid #0a0f0d!important;border-radius:11px!important;box-shadow:2px 2px 0 #0a0f0d!important;padding:6px 8px!important;font-size:12px!important;transform:none!important}
+.pk-i *{color:#0a0f0d!important}
+.pk-i:hover{background:#f6ffdc!important;transform:translate(-1px,-1px)!important;box-shadow:3px 3px 0 #0a0f0d!important}
+.pk-i .mono{background:#0a0f0d;color:var(--lime)!important;border-radius:999px;padding:2px 8px;font-weight:800!important;font-size:10.5px!important}
+.pk-i .nm{font-family:var(--font);font-weight:700}
+.pk-i .pill{height:18px!important;background:#fff!important;border:1.5px solid #0a0f0d!important;font-size:9.5px!important}
+.pk-i .pill.p-ok{background:#0a0f0d!important;color:var(--lime)!important}
+.pk-i .pill.p-ok *{color:var(--lime)!important}
+.pk-i.on,html:root .on-peta .pk-i.on{background:var(--lime)!important;box-shadow:3px 3px 0 #0a0f0d!important;outline:2px solid #0a0f0d;outline-offset:1px}
+.pick-btn,html:root .on-peta .pick-btn{background:var(--card)!important;border:2px solid var(--edge)!important;border-radius:999px!important;color:var(--ink)!important}
+.pick-btn .mono{background:#0a0f0d;color:var(--lime)!important;border-radius:999px;padding:1px 8px}
+html:root .app .pick-pop .pk-i .mono,html:root .app.on-peta .pick-pop .pk-i .mono,
+html:root .app .pick .pick-btn .mono,html:root .app.on-peta .pick .pick-btn .mono,
+html:root .app.on-peta .pick-pop .pk-i .pill.p-ok,html:root .app.on-peta .pick-pop .pk-i .pill.p-ok *,
+html:root .app.on-peta .pick-pop .pk-d{color:var(--lime)!important}
+html:root .app.on-peta .pick-pop .pk-i .nm,html:root .app.on-peta .pick-pop .pk-i .pill:not(.p-ok),html:root .app.on-peta .pick-pop .pk-i .pill:not(.p-ok) *{color:#0a0f0d!important}
+html:root .app.on-peta .pick-pop .pk-u{color:var(--ink)!important}
+/* id #app agar menang dari aturan kontras peta lama */
+#app .pick-pop .pk-d,#app .pick-pop .pk-i .mono,#app .pick .pick-btn .mono,#app .pick-pop .pk-i .pill.p-ok,#app .pick-pop .pk-i .pill.p-ok *{color:var(--lime)!important}
+#app .pick-pop .pk-i .pill.p-ok{background:#0a0f0d!important;border-color:#0a0f0d!important}
+#app .pick-pop .pk-i .pill:not(.p-ok){background:#fff!important}
+#app .pick-pop .pk-i .nm,#app .pick-pop .pk-i .pill:not(.p-ok),#app .pick-pop .pk-i .pill:not(.p-ok) *,#app .pick-pop .pk-i em{color:#0a0f0d!important}
+#app .pick-pop .pk-u{color:var(--ink)!important}
+#app .sls-row .k,#app .no{color:var(--lime)!important}
+.toast.glass,.toast.glass.solid{background:#0a0f0d!important;color:#f3f6f2!important;border:2px solid var(--lime)!important}

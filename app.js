@@ -10,7 +10,7 @@ const NAMA_KEC = () => (S.cfg && S.cfg.nama_kec) || KEC.nama;
 const TARGET_TITIK_ = () => +(S.cfg && S.cfg.target_titik) || 0;
 const TARGET_SLS_ = () => +(S.cfg && S.cfg.target_sls) || 0;
 /* naikkan bersama ?v= di index.html dan nama cache di sw.js setiap rilis */
-const VERSI = "37", VERSI_TGL = "26 Okt 2026";
+const VERSI = "38", VERSI_TGL = "26 Okt 2026";
 const MOBILE = () => innerWidth < 960;
 const S = {
   me: null, view: "beranda", sel: null, scan: "wss", opac: .85, showPts: true, showBatas: true, base: "sat",
@@ -572,7 +572,7 @@ function slsSelectHtml(){const s=S.sls[S.sel]||{};
 }
 function pickList(q){q=(q||"").toLowerCase();
   return groupsFor(scope()).map(g=>g.dusun.map(d=>{const ids=d.ids.filter(id=>!q||id.includes(q)||slsCode(id).includes(q)||(S.sls[id].nmsls||"").toLowerCase().includes(q));if(!ids.length)return"";
-    return `<div class="pk-g">${esc(g.title)} · ${esc(d.title)}</div>`+ids.map(id=>{const x=S.sls[id],t=slsStat(id);return `<button type="button" class="pk-i ${id===S.sel?"on":""}" data-id="${id}" role="option"><span class="mono">${slsCode(id)}</span><span class="nm">${esc(shortNm(x.nmsls||""))}</span>${x.berubah_batas?`<i class="dotc" title="batas berubah"></i>`:""}${x.peta_sls?`<em>⇄</em>`:""}<span class="pill ${t.status[1]}">${t.status[0]}</span></button>`}).join("")}).join("")).join("")||`<div class="pk-g" style="text-transform:none">Tidak ada SLS yang cocok.</div>`}
+    return `<div class="pk-g"><span class="pk-d">${esc(g.title)}</span><span class="pk-u">${esc(d.title)}</span></div>`+ids.map(id=>{const x=S.sls[id],t=slsStat(id);return `<button type="button" class="pk-i ${id===S.sel?"on":""}" data-id="${id}" role="option"><span class="mono">${slsCode(id)}</span><span class="nm">${esc(shortNm(x.nmsls||""))}</span>${x.berubah_batas?`<i class="dotc" title="batas berubah"></i>`:""}${x.peta_sls?`<em>⇄</em>`:""}<span class="pill ${t.status[1]}">${t.status[0]}</span></button>`}).join("")}).join("")).join("")||`<div class="pk-g" style="text-transform:none">Tidak ada SLS yang cocok.</div>`}
 function openPick(){const host=$(".pick");if(!host||host.querySelector(".pick-pop"))return closePick();
   const btn=$("#slsBtn");btn.setAttribute("aria-expanded","true");
   const pop=document.createElement("div");pop.className="glass solid pick-pop";pop.setAttribute("role","listbox");
