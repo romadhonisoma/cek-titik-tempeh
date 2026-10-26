@@ -1,7 +1,7 @@
 {
-  "name": "Cek Titik Bangunan SE2026",
+  "name": "Cek Titik Bangunan Tempeh",
   "short_name": "Cek Titik",
-  "description": "Pengecekan titik bangunan SE2026 Kabupaten Lumajang",
+  "description": "Pengecekan titik bangunan SE2026 Kecamatan Tempeh",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

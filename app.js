@@ -1,30 +1,22 @@
 /* Cek Titik Bangunan SE2026 — aplikasi online multi-kecamatan (Supabase + Leaflet) */
 "use strict";
 const store = { get(k){try{return localStorage.getItem(k)}catch(e){return null}}, set(k,v){try{localStorage.setItem(k,v)}catch(e){}}, del(k){try{localStorage.removeItem(k)}catch(e){}} };
-/* pusat = database Tempeh (daftar kecamatan + koordinator kabupaten); tiap kecamatan punya database sendiri */
-const HUB = { kode: "3508050", nama: "Tempeh", url: CFG.SUPABASE_URL, kunci: CFG.SUPABASE_KEY };
-let REG = (()=>{try{const r=JSON.parse(store.get("ctb-reg")||"null");return Array.isArray(r)&&r.length?r:[HUB]}catch(e){return [HUB]}})();
-const KEC = REG.find(k=>k.kode===store.get("ctb-kec")) || REG.find(k=>k.url===HUB.url) || REG[0];
-const IS_HUB = KEC.url === HUB.url;
+/* satu kecamatan: Tempeh */
+const KEC = { kode: "3508050", nama: "Tempeh", url: CFG.SUPABASE_URL, kunci: CFG.SUPABASE_KEY };
 const sb = supabase.createClient(KEC.url, KEC.kunci, { auth: { persistSession: true, detectSessionInUrl: true, flowType: "pkce" } });
-const restRpc = async (k, fn, body) => { const r = await fetch(k.url + "/rest/v1/rpc/" + fn, { method: "POST", headers: { apikey: k.kunci, "Content-Type": "application/json" }, body: JSON.stringify(body || {}) }); if (!r.ok) throw new Error("HTTP " + r.status); return r.json() };
-async function loadReg(){
-  try{const r=await fetch(HUB.url+"/rest/v1/kecamatan?select=kode,nama,url,kunci,urut&aktif=eq.true&order=urut.asc,nama.asc",{headers:{apikey:HUB.kunci}});
-    if(!r.ok)return REG;const d=await r.json();if(Array.isArray(d)&&d.length){REG=d;store.set("ctb-reg",JSON.stringify(d))}}catch(e){}
-  return REG}
 const CFGDEF = { kode_kec: KEC.kode, nama_kec: KEC.nama, nama_kab: "Lumajang", target_titik: 0, target_sls: 0 };
 const KODE = () => (S.cfg && S.cfg.kode_kec) || KEC.kode;
 const NAMA_KEC = () => (S.cfg && S.cfg.nama_kec) || KEC.nama;
 const TARGET_TITIK_ = () => +(S.cfg && S.cfg.target_titik) || 0;
 const TARGET_SLS_ = () => +(S.cfg && S.cfg.target_sls) || 0;
 /* naikkan bersama ?v= di index.html dan nama cache di sw.js setiap rilis */
-const VERSI = "32", VERSI_TGL = "26 Okt 2026";
+const VERSI = "33", VERSI_TGL = "26 Okt 2026";
 const MOBILE = () => innerWidth < 960;
 const S = {
   me: null, view: "beranda", sel: null, scan: "wss", opac: .85, showPts: true, showBatas: true, base: "sat",
   tab: "titik", placing: null, focus: null, draft: null, detail: null, minHead: false, minSheet: MOBILE(),
   theme: "dark", open: {}, q: "",
-  cfg: null, kab: false, ai: {}, sls: {}, slsIds: [], people: {}, corr: {}, temuan: {}, status: {}, scans: {}, pts: {}, geoms: {}, urls: {}
+  cfg: null, ai: {}, sls: {}, slsIds: [], people: {}, corr: {}, temuan: {}, status: {}, scans: {}, pts: {}, geoms: {}, urls: {}
 };
 {const t=store.get("ctb-theme");if(t==="light"||t==="dark")S.theme=t}
 
@@ -46,7 +38,6 @@ const ICON = {
   map:sv('<path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2z"/><path d="M9 4v14M15 6v14"/>'),
   edit:sv('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/>'),
   admin:sv('<path d="M12 3 4 6v6c0 4.5 3.4 8.3 8 9 4.6-.7 8-4.5 8-9V6z"/><path d="m9 12 2 2 4-4"/>'),
-  kab:sv('<path d="M3 21h18"/><path d="M5 21V10l7-5 7 5v11"/><path d="M9 21v-6h6v6"/>'),
   out:sv('<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>'),
   plus:sv('<path d="M12 5v14M5 12h14"/>'), minus:sv('<path d="M5 12h14"/>'),
   target:sv('<circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>'),
@@ -67,22 +58,11 @@ const REV={menunggu:["Tersimpan","p-ok"],disetujui:["Tersimpan","p-ok"],ditolak:
 const TEM={tanpa_titik:["Nomor tanpa titik","mag","Nomor ada di gambar peta, tetapi tidak ada titik digitalnya"],tidak_di_peta:["Titik tidak di peta","mag","Titik digital ada, tetapi nomornya tidak ditemukan di gambar peta"],dobel:["Nomor dobel di peta","warn","Nomor yang sama ditulis lebih dari sekali di gambar peta"]};
 
 /* ---------- Tema ---------- */
-function applyTheme(){document.documentElement.classList.toggle("light",S.theme==="light");document.querySelectorAll('meta[name="theme-color"]').forEach(m=>m.setAttribute("content",S.theme==="light"?"#d6d8e6":"#07060e"));
+function applyTheme(){document.documentElement.classList.toggle("light",S.theme==="light");document.querySelectorAll('meta[name="theme-color"]').forEach(m=>m.setAttribute("content",S.theme==="light"?"#f3f4f6":"#0f1115"));
   document.querySelectorAll(".theme-toggle").forEach(b=>{b.innerHTML=S.theme==="light"?ICON.moon:ICON.sun;const l=S.theme==="light"?"Pakai tema gelap":"Pakai tema terang";b.setAttribute("aria-label",l);b.title=l});
-  const m=document.querySelector('meta[name="theme-color"]');if(m)m.content=S.theme==="light"?"#d6d8e6":"#07060e"}
+  const m=document.querySelector('meta[name="theme-color"]');if(m)m.content=S.theme==="light"?"#f3f4f6":"#0f1115"}
 document.addEventListener("click",e=>{if(e.target.closest(".theme-toggle")){S.theme=S.theme==="light"?"dark":"light";store.set("ctb-theme",S.theme);applyTheme();if(map)drawPts()}});
 applyTheme();
-
-/* ---------- Kaca 3D: kartu sedikit miring & berkilau mengikuti kursor (hanya perangkat bermouse) ---------- */
-if(matchMedia("(hover:hover) and (pointer:fine)").matches&&!matchMedia("(prefers-reduced-motion:reduce)").matches){
-  const TILT=".glass.card,.glass.kpi,.glass.corr,.login-card";let cur=null;
-  const reset=el=>{["--rx","--ry","--sheen"].forEach(k=>el.style.removeProperty(k));el.classList.remove("tilt")};
-  document.addEventListener("pointermove",e=>{const el=e.target.closest(TILT);if(cur&&cur!==el)reset(cur);cur=el;if(!el)return;
-    const r=el.getBoundingClientRect(),x=(e.clientX-r.left)/r.width,y=(e.clientY-r.top)/r.height,k=Math.min(1,260/Math.max(r.width,r.height));
-    el.classList.add("tilt");el.style.setProperty("--rx",((.5-y)*6*k).toFixed(2)+"deg");el.style.setProperty("--ry",((x-.5)*7*k).toFixed(2)+"deg");
-    el.style.setProperty("--mx",(x*100).toFixed(1)+"%");el.style.setProperty("--my",(y*100).toFixed(1)+"%");el.style.setProperty("--sheen","1")},{passive:true});
-  document.documentElement.addEventListener("pointerleave",()=>{if(cur){reset(cur);cur=null}});
-}
 
 /* ---------- Pasang aplikasi (PWA) ---------- */
 let deferredInstall=null;
@@ -133,7 +113,7 @@ async function loadAll(){
     Promise.resolve(sb.from("pengaturan").select("kode_kec,nama_kec,nama_kab,target_titik,target_sls").maybeSingle()).then(r=>r&&r.data).catch(()=>null)
   ]);
   const d={sls,ppl,kor,tem,st,sc,riw,cfg};applyData(d);
-  try{localStorage.setItem(cacheKey(S.me.email),JSON.stringify({v:2,t:Date.now(),me:S.me,kab:S.kab,d}))}catch(e){}
+  try{localStorage.setItem(cacheKey(S.me.email),JSON.stringify({v:2,t:Date.now(),me:S.me,d}))}catch(e){}
 }
 const cacheKey=email=>"ctb-cache-"+KEC.kode+"-"+email;
 function cacheGet(email){try{const c=JSON.parse(localStorage.getItem(cacheKey(email))||"null");return c&&c.v===2?c:null}catch(e){return null}}
@@ -175,17 +155,8 @@ async function loadSlsDetail(id){
 }
 
 /* ---------- Login ---------- */
-function kecPicker(){
-  const w=$("#kecWrap"),sel=$("#kecSel");if(!w||!sel)return;
-  $("#kecNama").textContent="Kecamatan "+KEC.nama;
-  if(REG.length<2){w.hidden=true;return}
-  w.hidden=false;sel.innerHTML=REG.map(k=>`<option value="${esc(k.kode)}"${k.kode===KEC.kode?" selected":""}>Kec. ${esc(k.nama)} (${esc(k.kode)})</option>`).join("");
-  sel.onchange=()=>{store.set("ctb-kec",sel.value);location.reload()};
-}
-function pindahKec(kode){store.set("ctb-kec",kode);location.href=location.pathname}
 async function boot(){
-  kecPicker();loadReg().then(kecPicker);
-  $("#gbtn").onclick=async()=>{store.set("ctb-kec",KEC.kode);const{error}=await sb.auth.signInWithOAuth({provider:"google",options:{redirectTo:location.origin+location.pathname,queryParams:{prompt:"select_account"}}});if(error)toast("Gagal membuka login Google: "+error.message)};
+  $("#gbtn").onclick=async()=>{const{error}=await sb.auth.signInWithOAuth({provider:"google",options:{redirectTo:location.origin+location.pathname,queryParams:{prompt:"select_account"}}});if(error)toast("Gagal membuka login Google: "+error.message)};
   const qp=new URLSearchParams(location.search+"&"+location.hash.slice(1)),er=qp.get("error_description")||qp.get("error");
   const {data:{session}}=await sb.auth.getSession();
   if(er&&!session){history.replaceState(null,"",location.pathname);return showLogin(`<b style="color:var(--bad)">Login gagal:</b> ${esc(er.replace(/\+/g," "))}<br>Coba lagi, atau kirim pesan ini ke admin.`)}
@@ -201,16 +172,15 @@ async function afterLogin(session){
     const cache=cacheGet(email);
     if(cache&&cache.me&&cache.me.email===email){
       /* buka langsung dari data tersimpan, lalu segarkan dari server di belakang */
-      S.me=cache.me;S.kab=!!cache.kab;applyData(cache.d);
+      S.me=cache.me;applyData(cache.d);
       const sl=scope();S.sel=store.get("ctb-sel-"+KEC.kode+"-"+email);if(!sl.includes(S.sel))S.sel=sl[0]||null;
       $("#boot").hidden=true;$("#login").hidden=true;const app=$("#app");app.hidden=false;app.classList.add("a-zoom");render(0);
       S._logging=false;bgRefresh(email);return;
     }
-    S.kab=await cekKab();
     const {data,error}=await sb.from("petugas").select("*").eq("email",email).maybeSingle();
     if(error)throw error;
     if(!data){await sb.auth.signOut();S._logging=false;
-      showLogin(`<b style="color:var(--bad)">Email ${esc(email)} belum terdaftar di Kecamatan ${esc(KEC.nama)}.</b><br>Minta admin kecamatan mendaftarkan atau mengganti email Anda${REG.length>1?", atau pilih kecamatan lain di atas":""}, lalu coba masuk lagi.`);return}
+      showLogin(`<b style="color:var(--bad)">Email ${esc(email)} belum terdaftar.</b><br>Minta admin (Soma Romadhoni) mendaftarkan atau mengganti email Anda, lalu coba masuk lagi.`);return}
     S.me=data;$("#boot").hidden=false;
     await loadAll();
     const sl=scope();S.sel=store.get("ctb-sel-"+KEC.kode+"-"+email);if(!sl.includes(S.sel))S.sel=sl[0]||null;
@@ -221,10 +191,8 @@ async function afterLogin(session){
   }catch(e){console.error(e);$("#boot").hidden=true;showLogin(`<b style="color:var(--bad)">Gagal memuat data:</b> ${esc(e.message||e)}`)}
   S._logging=false;
 }
-async function cekKab(){try{const{data,error}=await sb.rpc("cek_kab");return !error&&data===true}catch(e){return false}}
 async function bgRefresh(email){
   try{
-    const kb=await cekKab();if(kb!==S.kab){S.kab=kb;render(0)}
     const {data,error}=await sb.from("petugas").select("*").eq("email",email).maybeSingle();
     if(error)return;
     if(!data){store.del(cacheKey(email));await sb.auth.signOut();S.me=null;showLogin(`<b style="color:var(--bad)">Email ${esc(email)} belum terdaftar.</b>`);return}
@@ -237,10 +205,9 @@ async function logout(){const app=$("#app");hideInstall();app.classList.remove("
 function scope(){return S.slsIds}
 
 /* ---------- Render & navigasi ---------- */
-const ORDER=["beranda","peta","koreksi","kab","admin"];
+const ORDER=["beranda","peta","koreksi","admin"];
 function render(dir){$("#app").classList.toggle("on-peta",S.view==="peta");
   const items=[["beranda","Beranda",ICON.home],["peta","Peta",ICON.map],["koreksi","Koreksi",ICON.edit]];
-  if(S.kab)items.push(["kab","Kabupaten",ICON.kab]);
   if(isAdmin())items.push(["admin","Admin",ICON.admin]);
   const nav=$("#nav"),key=items.map(i=>i[0]).join();
   if(nav.dataset.k!==key){nav.dataset.k=key;nav.innerHTML=`<span class="nav-ind" aria-hidden="true"></span><div class="brand"><div class="logo" style="width:38px;height:38px;border-radius:12px"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg></div></div>`+
@@ -248,7 +215,7 @@ function render(dir){$("#app").classList.toggle("on-peta",S.view==="peta");
     `<button type="button" data-v="keluar">${ICON.out}<span>Keluar</span></button>`}
   nav.querySelectorAll("[data-v]").forEach(b=>b.classList.toggle("on",b.dataset.v===S.view));moveInd(true);
   if(S.view!=="peta")destroyMap();
-  ({beranda:vBeranda,peta:vPeta,koreksi:vKoreksi,kab:vKab,admin:vAdmin})[S.view]();
+  ({beranda:vBeranda,peta:vPeta,koreksi:vKoreksi,admin:vAdmin})[S.view]();
   const first=$("#view").firstElementChild;
   if(first&&dir)first.classList.add(S.view==="peta"?"a-zoom":(dir<0?"a-inL":"a-inR"));
   applyTheme();
@@ -261,10 +228,9 @@ function moveInd(anim){requestAnimationFrame(()=>{const ind=$(".nav-ind"),b=$("#
   void ind.offsetWidth;ind.classList.add("ready");ind.classList.remove("instant")})}
 addEventListener("resize",()=>moveInd(false));
 if(document.fonts)document.fonts.ready.then(()=>moveInd(false));
-function go(v){if(v===S.view)return;const d=ORDER.indexOf(v)-ORDER.indexOf(S.view)||1;const cur=$("#view").firstElementChild;
-  S.view=v;$("#nav").querySelectorAll("[data-v]").forEach(b=>b.classList.toggle("on",b.dataset.v===v));moveInd(true);
-  if(cur){cur.style.transition="opacity .2s var(--ease-in),transform .2s var(--ease-in)";cur.style.opacity="0";cur.style.transform=`perspective(1400px) translate3d(${d>0?-28:28}px,0,-50px) rotateY(${d>0?5:-5}deg)`}
-  setTimeout(()=>render(d),cur?190:0)}
+function go(v){if(v===S.view)return;
+  S.view=v;$("#nav").querySelectorAll("[data-v]").forEach(b=>b.classList.toggle("on",b.dataset.v===v));moveInd(false);
+  render(0)}
 $("#nav").addEventListener("click",e=>{const b=e.target.closest("button[data-v]");if(!b)return;if(b.dataset.v==="keluar")return confirmBox("Keluar dari aplikasi?","Anda perlu masuk lagi dengan akun Google untuk membuka aplikasi ini.","Keluar",true).then(ok=>ok&&logout());go(b.dataset.v)});
 async function refreshAll(){try{await loadAll();S.pts={};S.urls={};toast("Data diperbarui.");render(0)}catch(e){toast("Gagal memuat ulang: "+e.message)}}
 
@@ -443,49 +409,6 @@ function renderAiCfg(){
   const d=$("#aiDel");if(d)d.onclick=async()=>{if(await confirmBox("Hapus kunci API?","Kunci dihapus dari browser ini. Hasil cek AI yang sudah ada tetap tersimpan.","Hapus",true)){aiSetCfg({thr:aiCfg().thr});renderAiCfg()}};
 }
 
-/* ---------- Kabupaten (koordinator kabupaten: rekap semua kecamatan, buka peta = lihat saja) ---------- */
-const pct=(a,b)=>b?Math.min(100,a/b*100):0;
-function agoTxt(t){if(!t)return "belum ada aktivitas";const m=(Date.now()-Date.parse(t))/60000;if(m<2)return "baru saja";if(m<60)return Math.round(m)+" menit lalu";if(m<1440)return Math.round(m/60)+" jam lalu";const d=Math.round(m/1440);return d+" hari lalu"}
-function barRow(lab,a,b,col){const p=pct(a,b);return `<div style="display:grid;gap:4px"><div class="row between"><small>${lab}</small><small class="mono">${fmt(a)} / ${fmt(b)} · ${p.toFixed(1)}%</small></div><div class="prog"><i style="width:${p}%;background:${col}"></i></div></div>`}
-async function vKab(){
-  if(!S.kab){go("beranda");return}
-  $("#view").innerHTML=`<div class="scroll"><div class="wrap stagger">
-    <div class="hello" style="--i:0"><div><div class="eyebrow">Koordinator Kabupaten · ${esc((S.cfg&&S.cfg.nama_kab)||"Lumajang")}</div><h1>Rekap kecamatan</h1></div>
-      <div class="top-actions"><button class="icon-btn" id="kabRf" type="button" aria-label="Muat ulang" title="Muat ulang">${ICON.refresh}</button></div></div>
-    <div class="kpis" style="--i:1" id="kabTot"></div>
-    <section style="display:grid;gap:10px;--i:2;grid-template-columns:minmax(0,1fr)">
-      <div class="section-h"><h2>Per kecamatan</h2><small class="muted">Angka diambil langsung dari database tiap kecamatan. "Buka peta" untuk melihat titik & scan kecamatan itu (lihat saja, tidak bisa mengubah).</small></div>
-      <div id="kabList" style="display:grid;gap:10px;grid-template-columns:minmax(0,1fr)"><div class="glass card"><small class="muted">Memuat rekap…</small></div></div>
-    </section></div></div>`;
-  $("#kabRf").onclick=()=>vKab();
-  const reg=await loadReg();
-  const res=await Promise.all(reg.map(k=>restRpc(k,"rekap_publik").then(r=>({k,r})).catch(e=>({k,err:e.message||String(e)}))));
-  if(S.view!=="kab"||!$("#kabList"))return;
-  const ok=res.filter(x=>x.r),T=ok.reduce((a,{r})=>({t:a.t+r.n_titik,ok:a.ok+r.ok,s:a.s+r.n_sls,b:a.b+r.beres,kd:a.kd+r.kendala}),{t:0,ok:0,s:0,b:0,kd:0});
-  $("#kabTot").innerHTML=`<div class="glass kpi"><small>Kecamatan</small><b class="mono">${reg.length}</b><small>${ok.length} terhubung</small></div>
-    <div class="glass kpi"><small>Titik bangunan</small><b class="mono">${fmt(T.t)}</b><small><span style="color:var(--ok)">${fmt(T.ok)} sudah benar</span> · ${pct(T.ok,T.t).toFixed(1)}%</small></div>
-    <div class="glass kpi"><small>SLS beres</small><b class="mono">${fmt(T.b)}</b><small>dari ${fmt(T.s)} SLS · ${pct(T.b,T.s).toFixed(1)}%</small></div>
-    <div class="glass kpi"><small>Kendala</small><b class="mono" style="color:var(--magenta)">${fmt(T.kd)}</b><small>titik ditandai !</small></div>`;
-  $("#kabList").innerHTML=res.map(({k,r,err},i)=>{
-    const cur=k.kode===KEC.kode;
-    if(err)return `<div class="glass card"><div class="row between"><b>Kec. ${esc(k.nama)} <span class="dim mono">${esc(k.kode)}</span></b>${cur?`<span class="pill p-info">Sedang dibuka</span>`:""}</div>
-      <small class="muted">Database tidak bisa dihubungi (${esc(err)}). Kemungkinan database "tidur" karena seminggu tidak dipakai, atau belum selesai dipasang. Admin kecamatan bisa membangunkannya di dashboard Supabase.</small></div>`;
-    const tgt=r.target_titik&&r.target_titik!==r.n_titik?` · target ${fmt(r.target_titik)}`:"";
-    return `<div class="glass card" style="display:grid;gap:10px;grid-template-columns:minmax(0,1fr)">
-      <div class="row between" style="gap:8px"><div><b>Kec. ${esc(r.nama||k.nama)}</b> <span class="dim mono">${esc(r.kode||k.kode)}</span><div><small class="muted">${fmt(r.n_petugas)} petugas · aktivitas terakhir ${agoTxt(r.terakhir)}${tgt}</small></div></div>
-        <div class="row" style="gap:6px">${cur?`<span class="pill p-info">Sedang dibuka</span>`:`<button class="btn btn-grad btn-sm" data-buka="${esc(k.kode)}" type="button">Buka peta</button>`}</div></div>
-      ${barRow("Titik sudah benar",r.ok,r.n_titik,"var(--ok)")}
-      ${barRow("SLS beres",r.beres,r.n_sls,"var(--cyan)")}
-      <div class="row" style="gap:6px;flex-wrap:wrap"><span class="pill p-new">${fmt(r.pindah)} lokasi diperbaiki</span><span class="pill p-mag">${fmt(r.kendala)} kendala</span><span class="pill p-mute">temuan ${fmt(r.temuan_dijawab)}/${fmt(r.temuan)} dijawab</span>
-        ${(r.desa||[]).length?`<button class="link" data-desa="${i}" type="button" style="font-size:12px;color:var(--muted);text-decoration:underline;margin-left:auto">rincian ${(r.desa||[]).length} desa</button>`:""}</div>
-      <div id="desa${i}" hidden></div></div>`}).join("");
-  $("#kabList").querySelectorAll("[data-buka]").forEach(b=>b.onclick=async()=>{const k=REG.find(x=>x.kode===b.dataset.buka);
-    if(await confirmBox(`Buka Kec. ${k.nama}?`,"Aplikasi pindah ke kecamatan ini. Jika diminta, masuk lagi dengan akun Google yang sama. Untuk kembali, buka menu Kabupaten lalu pilih kecamatan semula.","Buka"))pindahKec(k.kode)});
-  $("#kabList").querySelectorAll("[data-desa]").forEach(b=>b.onclick=()=>{const i=+b.dataset.desa,el=$("#desa"+i),r=res[i].r;
-    if(!el.hidden){el.hidden=true;return}
-    el.innerHTML=`<div class="tbl-wrap"><table><thead><tr><th>Desa</th><th>SLS beres</th><th>Titik benar</th><th>Kendala</th></tr></thead><tbody>${r.desa.map(d=>`<tr><td>${esc(tc(d.nm||d.kd))}</td><td class="mono">${fmt(d.beres)}/${fmt(d.n_sls)}</td><td class="mono">${fmt(d.ok)}/${fmt(d.n_titik)} · ${pct(d.ok,d.n_titik).toFixed(0)}%</td><td class="mono">${fmt(d.kendala)}</td></tr>`).join("")}</tbody></table></div>`;el.hidden=false});
-}
-
 /* ---------- Beranda ---------- */
 const tc=t=>(t||"").toLowerCase().replace(/\b\w/g,c=>c.toUpperCase());
 function dusunOf(nm){const m=(nm||"").match(/\b(DUSUN|DSN\.?|LINGKUNGAN|LINGK\.?|KAMPUNG|KRAJAN)\b\s*(.*)$/i);if(!m)return "Non-permukiman (sawah/kebun)";return m[1].toUpperCase().startsWith("KRAJAN")?"Dusun Krajan "+tc(m[2]):(/^(LINGKUNGAN|LINGK)/i.test(m[1])?"Lingkungan ":"Dusun ")+tc(m[2])}
@@ -499,11 +422,11 @@ function vBeranda(){
   const u=me(),sl=scope(),st=sl.map(slsStat);
   const tot=st.reduce((a,b)=>({n:a.n+b.n,benar:a.benar+b.benar,salah:a.salah+b.salah,pindah:a.pindah+b.pindah,done:a.done+(b.done?1:0),tem:a.tem+b.tem,dij:a.dij+b.dij,far:a.far+b.far}),{n:0,benar:0,salah:0,pindah:0,done:0,tem:0,dij:0,far:0});
   const menunggu=Object.values(S.corr).filter(c=>c.jenis!=="benar"&&c.review==="menunggu").length;
-  const scopeTxt=isAdmin()?"Seluruh Kecamatan "+NAMA_KEC():S.me.akses==="edit_kec"?"Seluruh Kecamatan "+NAMA_KEC()+" (lihat & edit)":S.me.akses==="lihat_kab"?"Seluruh Kecamatan "+NAMA_KEC()+" (lihat saja)":((S.me.peran==="PML"?"Semua SLS PPL Anda":"Semua SLS tugas Anda")+(S.me.akses?" + akses khusus: "+AKSES[S.me.akses].toLowerCase():""));
+  const scopeTxt=isAdmin()?"Seluruh Kecamatan "+NAMA_KEC():S.me.akses==="edit_kec"?"Seluruh Kecamatan "+NAMA_KEC()+" (lihat & edit)":((S.me.peran==="PML"?"Semua SLS PPL Anda":"Semua SLS tugas Anda")+(S.me.akses?" + akses khusus: "+AKSES[S.me.akses].toLowerCase():""));
   const groups=groupsFor(sl);if(groups.length===1)S.open[groups[0].k]=true;
   const nBatas=sl.filter(id=>S.sls[id].berubah_batas).length;
   $("#view").innerHTML=`<div class="scroll"><div class="wrap stagger">
-    <div class="hello" style="--i:0"><div><div class="eyebrow">${esc(u.peran==="KAB"?"Koordinator Kabupaten · Kec. "+NAMA_KEC():u.peran==="KOORDINATOR"?"Koordinator · Kec. "+NAMA_KEC():u.admin&&u.peran!=="ADMIN"?u.peran+" · Admin":u.peran)}</div><h1>Halo, ${esc((u.nama||"").split(" ")[0])}</h1></div>
+    <div class="hello" style="--i:0"><div><div class="eyebrow">${esc(u.peran==="KOORDINATOR"?"Koordinator":u.admin&&u.peran!=="ADMIN"?u.peran+" · Admin":u.peran)}</div><h1>Halo, ${esc((u.nama||"").split(" ")[0])}</h1></div>
       <div class="top-actions"><button class="icon-btn" id="rfBtn" type="button" aria-label="Muat ulang data" title="Muat ulang data">${ICON.refresh}</button><button class="btn btn-sm" id="insBtn" type="button">${small(ICON.install)}Pasang</button><button class="icon-btn theme-toggle" type="button"></button></div></div>
     <div class="kpis" style="--i:1">
       <div class="glass kpi"><small>SLS</small><b class="mono">${fmt(sl.length)}</b><small>${tot.done} beres · <span style="color:var(--cyan)">${nBatas} berubah batas</span></small></div>
@@ -583,7 +506,7 @@ async function vPeta(){
    <div class="glass solid place-banner" id="placeBanner" hidden></div><div class="place-cross" aria-hidden="true"><i></i></div>
    <div class="glass solid map-loading" id="mapLoading"><div class="spinner"></div>Memuat titik…</div></div>`;
   destroyMap();
-  map=L.map("map",{zoomControl:false,attributionControl:true,maxZoom:22,minZoom:11,zoomSnap:.25,wheelPxPerZoomLevel:90,inertiaDeceleration:2600,tapTolerance:20,center:[-8.2,113.17],zoom:13});
+  map=L.map("map",{preferCanvas:true,zoomControl:false,attributionControl:true,maxZoom:22,minZoom:11,zoomSnap:.25,wheelPxPerZoomLevel:90,inertiaDeceleration:2600,tapTolerance:20,center:[-8.2,113.17],zoom:13});
   map.attributionControl.setPrefix(false);
   map.createPane("scan").style.zIndex=350;
   baseLayer=BASES.sat().addTo(map);
@@ -1075,50 +998,6 @@ function renderPeng(){
     if(error){toast("Gagal: "+error.message);return}
     S.cfg={...S.cfg,...v};document.title="Cek Titik Bangunan · "+NAMA_KEC();toast("Pengaturan kecamatan disimpan.");vAdmin()};
 }
-async function loadHubAdm(){
-  const rb=$("#regBox"),kb=$("#kkBox");if(!rb||!kb)return;
-  const [{data:reg,error:e1},{data:kk,error:e2}]=await Promise.all([sb.from("kecamatan").select("*").order("urut").order("nama"),sb.from("koord_kab").select("*").order("nama")]);
-  if(!$("#regBox"))return;
-  if(e1||e2){rb.innerHTML=kb.innerHTML=`<small class="muted">Gagal memuat: ${esc((e1||e2).message)}</small>`;return}
-  rb.innerHTML=`<div class="tbl-wrap"><table><thead><tr><th>Kode</th><th>Kecamatan</th><th>Database</th><th>Status</th><th></th></tr></thead><tbody>
-    ${reg.map(k=>`<tr><td class="mono">${esc(k.kode)}</td><td><b>${esc(k.nama)}</b></td><td class="mono dim" style="font-size:11px">${esc(k.url.replace(/^https:\/\//,"").replace(/\.supabase\.co.*/,""))}</td>
-      <td><span class="pill ${k.aktif?"p-ok":"p-mute"}" data-st="${esc(k.kode)}">…</span></td>
-      <td style="white-space:nowrap">${k.url===HUB.url?`<span class="pill p-info">pusat</span>`:`<button class="btn btn-ghost btn-sm" data-akt="${esc(k.kode)}" type="button">${k.aktif?"Nonaktifkan":"Aktifkan"}</button> <button class="btn btn-bad btn-sm" data-hps="${esc(k.kode)}" type="button">Hapus</button>`}</td></tr>`).join("")}
-    </tbody></table></div>
-    <div class="peng-grid" style="margin-top:4px">
-      <input class="field mono" id="rgKode" inputmode="numeric" maxlength="7" placeholder="kode, mis. 3508060">
-      <input class="field" id="rgNama" placeholder="nama kecamatan">
-      <input class="field mono" id="rgUrl" placeholder="https://xxxx.supabase.co">
-      <input class="field mono" id="rgKey" placeholder="sb_publishable_…">
-    </div>
-    <div class="row between" style="gap:8px"><small class="muted">URL & kunci publishable ada di dashboard Supabase kecamatan → Project Settings → API Keys. Kunci ini memang boleh dibagikan.</small><button class="btn btn-grad btn-sm" id="rgAdd" type="button">Tambah kecamatan</button></div>`;
-  reg.forEach(k=>restRpc(k,"rekap_publik").then(r=>{const el=rb.querySelector(`[data-st="${k.kode}"]`);if(el)el.textContent=(k.aktif?"aktif":"nonaktif")+` · ${fmt(r.n_sls)} SLS · ${fmt(r.n_titik)} titik`})
-    .catch(()=>{const el=rb.querySelector(`[data-st="${k.kode}"]`);if(el){el.className="pill p-bad";el.textContent="tidak terhubung"}}));
-  rb.querySelectorAll("[data-akt]").forEach(b=>b.onclick=async()=>{const k=reg.find(x=>x.kode===b.dataset.akt);const{error}=await sb.from("kecamatan").update({aktif:!k.aktif}).eq("kode",k.kode);if(error){toast("Gagal: "+error.message);return}await loadReg();loadHubAdm()});
-  rb.querySelectorAll("[data-hps]").forEach(b=>b.onclick=async()=>{const k=reg.find(x=>x.kode===b.dataset.hps);
-    if(!await confirmBox(`Hapus Kec. ${k.nama} dari daftar?`,"Hanya menghapus dari daftar aplikasi. Database kecamatannya sendiri tidak terhapus.","Hapus",true))return;
-    const{error}=await sb.from("kecamatan").delete().eq("kode",k.kode);if(error){toast("Gagal: "+error.message);return}await loadReg();loadHubAdm()});
-  $("#rgAdd").onclick=async e=>{
-    const v={kode:$("#rgKode").value.trim(),nama:$("#rgNama").value.trim(),url:$("#rgUrl").value.trim().replace(/\/+$/,""),kunci:$("#rgKey").value.trim(),aktif:true,urut:parseInt($("#rgKode").value.slice(-3))||0};
-    if(!/^\d{7}$/.test(v.kode)){toast("Kode kecamatan harus 7 angka.");return}
-    if(!v.nama){toast("Isi nama kecamatan.");return}
-    if(!/^https:\/\/[a-z0-9]{20}\.supabase\.co$/.test(v.url)){toast("URL harus seperti https://xxxxxxxxxxxxxxxxxxxx.supabase.co");return}
-    if(/^sb_secret_|service_role/i.test(v.kunci)){toast("Itu kunci RAHASIA. Pakai kunci publishable (sb_publishable_…).",4500);return}
-    if(!/^(sb_publishable_|eyJ)/.test(v.kunci)){toast("Kunci harus kunci publishable (sb_publishable_…).");return}
-    e.currentTarget.disabled=true;
-    let info="";try{const r=await restRpc(v,"rekap_publik");info=r&&r.kode&&r.kode!==v.kode?`Perhatian: kode di database itu ${r.kode} (${r.nama}).`:"Terhubung ✓"}catch(err){info="Belum terhubung ("+err.message+"). Pastikan file SQL pemasangan sudah dijalankan."}
-    const{error}=await sb.from("kecamatan").insert(v);e.currentTarget&&(e.currentTarget.disabled=false);
-    if(error){toast("Gagal: "+error.message);return}toast(`Kec. ${v.nama} ditambahkan. ${info}`,5000);await loadReg();loadHubAdm()};
-  kb.innerHTML=`${kk.length?kk.map(a=>`<div class="row between"><span><b>${esc(a.nama)}</b> <span class="dim mono">${esc(a.email)}</span></span>${a.email===S.me.email?`<span class="pill p-info">Anda</span>`:`<button class="btn btn-bad btn-sm" data-unkk="${esc(a.email)}" type="button">Cabut</button>`}</div>`).join(""):`<small class="muted">Belum ada.</small>`}
-    <div class="row" style="flex-wrap:nowrap"><input class="field" id="kkEmail" placeholder="email Google" style="flex:1;min-width:0"><input class="field" id="kkName" placeholder="nama" style="flex:1;min-width:0"><button class="btn btn-grad btn-sm" id="kkAdd" type="button">Tambah</button></div>`;
-  $("#kkAdd").onclick=async()=>{const e=$("#kkEmail").value.trim().toLowerCase(),n=$("#kkName").value.trim();
-    if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)){toast("Isi email Google yang valid.");return}if(!n){toast("Isi nama juga.");return}
-    const{error}=await sb.from("koord_kab").upsert({email:e,nama:n});if(error){toast("Gagal: "+error.message);return}
-    toast(`${n} jadi koordinator kabupaten. Ia tinggal masuk ke kecamatan mana pun.`,4000);loadHubAdm()};
-  kb.querySelectorAll("[data-unkk]").forEach(b=>b.onclick=async()=>{const e=b.dataset.unkk;
-    if(!await confirmBox("Cabut koordinator kabupaten?",`<b>${esc(e)}</b> tidak bisa lagi melihat rekap & peta kecamatan lain (berlaku saat ia masuk berikutnya).`,"Cabut",true))return;
-    const{error}=await sb.from("koord_kab").delete().eq("email",e);if(error){toast("Gagal: "+error.message);return}loadHubAdm()});
-}
 function vAdmin(){
   if(!isAdmin()){go("beranda");return}
   const pml=Object.values(S.people).filter(v=>v.peran==="PML").sort((a,b)=>a.nama.localeCompare(b.nama));
@@ -1164,14 +1043,6 @@ function vAdmin(){
       <div class="section-h"><h2>Pengecekan AI (Gemini)</h2><small class="muted">Untuk tombol "✦ AI" di panel SLS pada halaman Peta: AI membaca nomor tulisan tangan di scan dan membandingkannya dengan titik digital.</small></div>
       <div class="glass card" id="aiBox"></div>
     </section>
-    ${IS_HUB?`<section style="display:grid;gap:10px;--i:2">
-      <div class="section-h"><h2>Daftar kecamatan</h2><small class="muted">Khusus pusat. Kecamatan yang aktif muncul di pilihan login dan di menu Kabupaten.</small></div>
-      <div class="glass card" id="regBox"><small class="muted">Memuat…</small></div>
-    </section>
-    <section style="display:grid;gap:10px;--i:2">
-      <div class="section-h"><h2>Koordinator kabupaten</h2><small class="muted">Bisa melihat rekap & peta semua kecamatan (lihat saja). Otomatis terdaftar di tiap kecamatan saat pertama masuk.</small></div>
-      <div class="glass card" id="kkBox"><small class="muted">Memuat…</small></div>
-    </section>`:""}
     <section style="display:grid;gap:10px;--i:2">
       <div class="section-h"><h2>Koordinator & pembantu perbaikan</h2><small class="muted">Bisa melihat dan mengedit titik seluruh kecamatan, tanpa menu Admin. Menu Admin dikunci untuk email pemilik.</small></div>
       <div class="glass card">${kor.length?kor.map(a=>`<div class="row between"><span><b>${esc(a.nama)}</b> <span class="dim mono">${esc(a.email)}</span>${a.peran==="PPL"||a.peran==="PML"?` <span class="pill p-mute">${a.peran}</span>`:""}</span><button class="btn btn-bad btn-sm" data-unkor="${esc(a.email)}" type="button">Cabut</button></div>`).join(""):`<small class="muted">Belum ada.</small>`}
@@ -1186,7 +1057,7 @@ function vAdmin(){
     </section>
   </div></div>`;
   $("#view").querySelectorAll("input[data-imp]").forEach(inp=>inp.onchange=()=>{const files=[...inp.files];inp.value="";if(files.length)runImport(inp.dataset.imp,files)});
-  $("#dlAll").onclick=()=>exportKoreksi(false);$("#dlTem").onclick=exportTemuan;loadMem();renderPeng();renderAiCfg();if(IS_HUB)loadHubAdm();
+  $("#dlAll").onclick=()=>exportKoreksi(false);$("#dlTem").onclick=exportTemuan;loadMem();renderPeng();renderAiCfg();
   $("#view").querySelectorAll("[data-akses]").forEach(sel=>sel.onchange=async()=>{
     const em=sel.dataset.akses,v=sel.value||null;sel.disabled=true;
     const{error}=await sb.from("petugas").update({akses:v}).eq("email",em);sel.disabled=false;
