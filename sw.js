@@ -1,6 +1,6 @@
-/* v36: aset & pustaka dari cache (cepat), halaman utama dicek ke server dulu, data aplikasi selalu dari server */
-const V="ctb-v36d",C=V+"-app",T="ctb-tiles",SC="ctb-scan";
-const SHELL=["./","index.html","app.css?v=36d","app.js?v=36d","config.js?v=36d","manifest.webmanifest","icon-192.png","icon-512.png"];
+/* v37: aset & pustaka dari cache (cepat), halaman utama dicek ke server dulu, data aplikasi selalu dari server */
+const V="ctb-v37b",C=V+"-app",T="ctb-tiles",SC="ctb-scan";
+const SHELL=["./","index.html","app.css?v=37b","app.js?v=37b","config.js?v=37b","manifest.webmanifest","icon-192.png","icon-512.png"];
 self.addEventListener("install",e=>{e.waitUntil(caches.open(C).then(c=>c.addAll(SHELL)).then(()=>self.skipWaiting()))});
 self.addEventListener("activate",e=>{e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==C&&k!==T&&k!==SC&&k!=="ctb-lib").map(k=>caches.delete(k)))).then(()=>self.clients.claim()))});
 async function trim(name,max){const c=await caches.open(name),k=await c.keys();if(k.length>max)for(const r of k.slice(0,k.length-max))await c.delete(r)}
@@ -22,7 +22,9 @@ self.addEventListener("fetch",e=>{
     const net=fetch(new Request(req.url,{cache:"no-cache"})).then(async r=>{if(r&&r.ok){try{(await caches.open(C)).put("index.html",r.clone())}catch(_){}}return r});
     e.waitUntil(net.catch(()=>{}));
     e.respondWith((async()=>{
-      try{const hit=(await caches.match("index.html"))||(await caches.match("./"));if(hit)return hit}catch(_){}
+      try{const hit=(await caches.match("index.html"))||(await caches.match("./"));
+        /* respons hasil pengalihan (index.html → /) tidak boleh dipakai langsung untuk navigasi: salin jadi respons biasa */
+        if(hit)return hit.redirected?new Response(await hit.blob(),{status:200,headers:hit.headers}):hit}catch(_){}
       try{return await net}catch(_){}
       try{return await fetch(req)}catch(_){return Response.error()}})());return}
   // file aplikasi berversi (?v=) dan ikon: cache-first

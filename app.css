@@ -798,3 +798,59 @@ html:root .app.on-peta .view .pick-pop.glass,html:root.light .app.on-peta .view 
 .seg button.on,html:root .on-peta .seg button.on{background:var(--lime)!important;color:#0a0f0d!important;border:1.5px solid #0a0f0d!important;box-shadow:none!important}
 .seg{background:var(--card2)!important;border:2px solid var(--edge)!important;box-shadow:none!important}
 .seg button:not(.on){color:var(--ink2)!important}
+
+/* ===================== v37 DASHBOARD & DAFTAR WILAYAH ===================== */
+:root{--lemon:#eefcc9;--lemon-dot:rgba(10,15,13,.09)}
+/* kartu utama dengan selotip */
+.hero{position:relative;overflow:visible!important;padding:22px 16px 16px!important;display:grid;gap:14px}
+.hero::before{content:"";display:block!important;position:absolute;top:-12px;left:50%;width:104px;height:22px;transform:translateX(-50%) rotate(-1.5deg)!important;
+  background:color-mix(in srgb,var(--teal) 72%,transparent);border-radius:2px;opacity:1!important;inset:-12px auto auto 50%;z-index:2}
+.hero-box{position:relative;--ink:#0a0f0d;--ink2:#2c3a33;color:#0a0f0d;background:var(--lemon);border:2px solid #0a0f0d;border-radius:14px;box-shadow:4px 4px 0 #0a0f0d;padding:18px 16px 14px;
+  background-image:radial-gradient(var(--lemon-dot) 1px,transparent 1.4px);background-size:14px 14px}
+.hero-tag{position:absolute;top:-13px;right:14px;background:var(--lime);color:#0a0f0d;border:2px solid #0a0f0d;border-radius:999px;padding:4px 12px;
+  font:800 12px/1.2 var(--font);transform:rotate(3deg);box-shadow:2px 2px 0 #0a0f0d;white-space:nowrap}
+.hero-lab{display:block;font-weight:700;color:#2c3a33;font-size:11.5px}
+.hero-num{font:800 clamp(30px,7vw,46px)/1.05 var(--font)!important;letter-spacing:-.035em;margin:4px 0 6px;color:#0a0f0d}
+.hero-num span{font-size:.5em;color:#3d4a44;letter-spacing:-.02em}
+.hero-sub{font-size:13px;color:#2c3a33;line-height:1.45}.hero-sub b{color:#0a0f0d}
+.hero-bar{height:10px;margin-top:10px;border:2px solid #0a0f0d;border-radius:999px;background:#fff;overflow:hidden}
+.hero-bar i{display:block;height:100%;background:#0a0f0d}
+.angka{border:2px solid var(--edge);border-radius:14px;padding:12px;display:grid;gap:8px;box-shadow:var(--hard);background:var(--card)}
+.angka-t{font-weight:800;color:var(--ink2);font-size:11.5px}
+.angka-row{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.angka .a{display:grid;gap:2px;align-content:start;padding:10px 11px;border-radius:11px;min-width:0}
+.angka .a b{font:700 12.5px/1.2 var(--font);color:var(--ink3)}
+.angka .a .v{font:800 22px/1.1 var(--font)!important;letter-spacing:-.03em;color:var(--ink3)}
+.angka .a .v small{font-size:.6em}
+.angka .a>small{color:var(--ink3);font-size:10.5px}
+.angka .a.hi{background:var(--lime);border:2px solid #0a0f0d;box-shadow:2px 2px 0 #0a0f0d}
+.angka .a.hi *{color:#0a0f0d!important}
+@media (max-width:640px){.angka-row{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* daftar desa → dusun → SLS (Beranda & Koreksi) */
+.group:not(.sub)>.group-h .t>b{display:inline-block;background:#0a0f0d;color:var(--lime)!important;border-radius:999px;padding:5px 13px;font:800 12.5px/1.2 var(--font);transform:rotate(-1.5deg);margin-bottom:4px;box-shadow:0 2px 0 rgba(10,15,13,.18)}
+.group.sub:not(.sls3){background:var(--paper)!important;border:2px dashed var(--line2)!important;border-radius:12px!important}
+.group.sub:not(.sls3)>.group-h .t>b{display:inline-block;background:var(--card);color:var(--ink)!important;border:2px solid var(--edge);border-radius:999px;padding:3px 10px;font:800 11.5px/1.2 var(--font);margin-bottom:3px}
+/* SLS: kotak lemon berbingkai tinta (di tema gelap tetap lemon agar kontras) */
+.sls-row,.group.sub.sls3{--ink:#0a0f0d;--ink2:#2c3a33;--ink3:#4b5a52;--muted:#2c3a33;--dim:#4b5a52;--fg:#0a0f0d;
+  --ok:#15803d;--warn:#b45309;--bad:#dc2626;--cyan:#0e7490;--magenta:#a21caf;
+  color:#0a0f0d;background:var(--lemon)!important;border:2px solid #0a0f0d!important;box-shadow:3px 3px 0 #0a0f0d!important;border-radius:12px!important}
+.sls-row:hover{background:#f6ffdc!important;transform:translate(-1px,-1px)!important;box-shadow:4px 4px 0 #0a0f0d!important}
+.sls-row.done{background:var(--lime)!important}
+.sls-row .k{display:grid;place-items:center;min-width:38px;height:38px;padding:0 4px;box-sizing:border-box;border-radius:999px;background:#0a0f0d;color:var(--lime)!important;font:800 10.5px var(--mono)!important}
+.sls-row.done .k::after{content:" ✓"}
+.sls-row .mid b{font-family:var(--font);font-weight:700}
+.sls-row .meta span{color:#2c3a33!important}
+.sls-row .pill{background:#fff!important;border:1.5px solid #0a0f0d;color:#0a0f0d!important}
+.sls-row .pill.p-ok{background:#0a0f0d!important;color:var(--lime)!important}
+.sls-rows{display:grid;gap:9px;padding:4px 4px 6px}
+.group.sub.sls3>.group-h .t>b{font-family:var(--font)}
+.group.sub.sls3 .corr-list{background:var(--card);border-top:2px solid #0a0f0d;border-radius:0 0 10px 10px}
+.group.sub.sls3 .corr-list{--ink:var(--ink-c,inherit)}
+:root:not(.light) .group.sub.sls3 .corr-list{--ink:#eef5ee;--ink2:#a7bfb3;--ink3:#83998d;--muted:#a7bfb3;--fg:#eef5ee;--ok:#8affc1;--warn:#ffd23f;--bad:#ff8fb1;--magenta:#ffb3e6;--cyan:#a8e6ff;color:#eef5ee}
+.bar{background:var(--paper-deep)!important;border:1.5px solid var(--edge);border-radius:999px;height:8px!important}
+.bar i{background:var(--ok)!important;border-radius:999px}
+.glass.hero::before,.login .glass.login-card::before{content:""!important;display:block!important;position:absolute!important;inset:-12px auto auto 50%!important;width:104px!important;height:22px!important;
+  transform:translateX(-50%) rotate(-1.5deg)!important;background:color-mix(in srgb,var(--teal) 72%,transparent)!important;border:0!important;border-radius:2px!important;
+  opacity:1!important;-webkit-mask:none!important;mask:none!important;box-shadow:none!important;filter:none!important;z-index:3!important;padding:0!important}
+.group-h .t>b{display:table!important}

@@ -10,7 +10,7 @@ const NAMA_KEC = () => (S.cfg && S.cfg.nama_kec) || KEC.nama;
 const TARGET_TITIK_ = () => +(S.cfg && S.cfg.target_titik) || 0;
 const TARGET_SLS_ = () => +(S.cfg && S.cfg.target_sls) || 0;
 /* naikkan bersama ?v= di index.html dan nama cache di sw.js setiap rilis */
-const VERSI = "36", VERSI_TGL = "26 Okt 2026";
+const VERSI = "37", VERSI_TGL = "26 Okt 2026";
 const MOBILE = () => innerWidth < 960;
 const S = {
   me: null, view: "beranda", sel: null, scan: "wss", opac: .85, showPts: true, showBatas: true, base: "sat",
@@ -441,12 +441,20 @@ function vBeranda(){
   $("#view").innerHTML=`<div class="scroll"><div class="wrap stagger">
     <div class="hello" style="--i:0"><div><div class="eyebrow">${esc(u.peran==="KOORDINATOR"?"Koordinator":u.admin&&u.peran!=="ADMIN"?u.peran+" · Admin":u.peran)}</div><h1>Halo, <span class="hl">${esc((u.nama||"").split(" ")[0])}</span></h1>${(()=>{const d=new Date().toDateString(),n=Object.values(S.corr).filter(c=>c.by===S.me.email&&c.at&&new Date(c.at).toDateString()===d).length;return `<div class="hand" style="margin-top:6px">${n?`hari ini kamu sudah memeriksa ${fmt(n)} titik — lanjut!`:"yuk mulai cek titik hari ini, satu per satu"}</div>`})()}</div>
       <div class="top-actions"><button class="icon-btn" id="rfBtn" type="button" aria-label="Muat ulang data" title="Muat ulang data">${ICON.refresh}</button><button class="btn btn-sm" id="insBtn" type="button">${small(ICON.install)}Pasang</button><button class="icon-btn theme-toggle" type="button"></button></div></div>
-    <div class="kpis" style="--i:1">
-      <div class="glass kpi"><small>SLS</small><b class="mono">${fmt(sl.length)}</b><small>${tot.done} beres · <span style="color:var(--cyan)">${nBatas} berubah batas</span></small></div>
-      <div class="glass kpi"><small>Titik bangunan</small><b class="mono">${fmt(tot.n)}</b><small><span style="color:var(--ok)">${fmt(tot.benar)} sudah benar</span> · <span style="color:var(--warn)">${fmt(tot.far)} perlu dicek</span></small></div>
-      <div class="glass kpi"><small>Perbaikan lokasi</small><b class="mono">${fmt(tot.pindah)}</b><small><span style="color:var(--magenta)">${fmt(tot.salah)} titik ada kendala</span></small></div>
-      <div class="glass kpi"><small>Temuan admin</small><b class="mono">${tot.dij}/${tot.tem}</b><small>sudah dijawab</small></div>
-    </div>
+    ${(()=>{const pc=tot.n?tot.benar/tot.n*100:0,t0=new Date(),sisa=Math.round((new Date(2026,9,31)-new Date(t0.getFullYear(),t0.getMonth(),t0.getDate()))/864e5);
+      const tag=sisa>1?`Target 31 Okt · sisa ${sisa} hari`:sisa===1?"Target 31 Okt · besok!":sisa===0?"Target 31 Okt · hari ini!":"Target 31 Okt lewat";
+      return `<div class="glass card hero" style="--i:1">
+      <div class="hero-box"><span class="hero-tag">${tag}</span>
+        <small class="hero-lab">Titik bangunan sudah benar · ${esc(scopeTxt)}</small>
+        <div class="hero-num mono">${fmt(tot.benar)}<span>/${fmt(tot.n)}</span></div>
+        <div class="hero-sub"><b>${pc.toFixed(1).replace(".",",")}%</b> sudah dicek benar, <b>${fmt(tot.done)}</b> dari ${fmt(sl.length)} SLS sudah beres.${tot.far?` Masih ada <b>${fmt(tot.far)}</b> titik nomor sama berjauhan yang perlu dicek.`:""}</div>
+        <div class="hero-bar"><i style="width:${pc.toFixed(1)}%"></i></div></div>
+      <div class="angka"><small class="angka-t">${esc(NAMA_KEC())} dalam Angka</small><div class="angka-row">
+        <div class="a hi"><b>SLS beres</b><span class="v mono">${fmt(tot.done)}<small>/${fmt(sl.length)}</small></span><small>${nBatas} berubah batas</small></div>
+        <div class="a"><b>Perlu dicek</b><span class="v mono">${fmt(tot.far)}</span><small>nomor sama berjauhan</small></div>
+        <div class="a"><b>Perbaikan lokasi</b><span class="v mono">${fmt(tot.pindah)}</span><small>${fmt(tot.salah)} titik ada kendala</small></div>
+        <div class="a"><b>Temuan admin</b><span class="v mono">${fmt(tot.dij)}<small>/${fmt(tot.tem)}</small></span><small>sudah dijawab</small></div>
+      </div></div></div>`})()}
     <div class="section-h" style="--i:2"><div><h2>Wilayah</h2><small class="muted">${scopeTxt} · per desa, dusun, lalu SLS</small></div>
       <label class="search" aria-label="Cari SLS">${ICON.search}<input class="field" id="q" placeholder="Cari SLS, dusun, atau nama petugas" value="${esc(S.q)}" autocomplete="off"></label></div>
     <div id="groups" style="--i:3;display:grid;gap:8px"></div>
@@ -480,7 +488,7 @@ function drawGroups(groups){
 }
 function petugasTxt(id){const s=S.sls[id],p=S.people[s.ppl_email];if(S.me.peran==="PPL"&&!isAdmin())return"";
   const ppl=p?p.nama:(s.ppl_email||"—");if(isAdmin())return `<span>PPL ${esc(ppl)}</span><span>PML ${esc(p?nameOf(p.pml_email):"—")}</span>`;return `<span>PPL ${esc(ppl)}</span>`}
-function rowsHtml(ids){return ids.map(id=>{const t=slsStat(id),s=S.sls[id];return `<button class="sls-row" data-s="${id}" type="button"><span class="k">${id.slice(10,14)}${id.slice(14)!=="00"?"."+id.slice(14):""}</span><span class="mid"><b>${esc(s.nmsls||id)}</b><span class="meta">${petugasTxt(id)}<span>${t.n} titik · <b style="color:var(--ok);display:inline;font-size:inherit">${t.benar} benar</b></span>${t.salah?`<span style="color:var(--magenta)">${t.salah} kendala</span>`:""}${t.far?`<span style="color:var(--warn)">${t.far} perlu dicek</span>`:""}${t.tem-t.dij?`<span style="color:var(--magenta)">${t.tem-t.dij} temuan</span>`:""}${s.berubah_batas?`<span style="color:var(--cyan);font-weight:700">● batas berubah</span>`:""}${s.peta_sls?`<span style="color:var(--warn);font-weight:700">⇄ peta ${s.peta_sls.slice(10,14)}</span>`:""}${canEdit(id)?"":`<span class="dim">👁 lihat saja</span>`}${S.scans[petaOf(id)]?"":`<span class="dim">scan belum ada</span>`}</span></span><span class="pill ${t.status[1]}">${t.status[0]}</span></button>`}).join("")}
+function rowsHtml(ids){return ids.map(id=>{const t=slsStat(id),s=S.sls[id];return `<button class="sls-row${t.done?" done":t.salah?" kd":""}" data-s="${id}" type="button"><span class="k">${id.slice(10,14)}${id.slice(14)!=="00"?"."+id.slice(14):""}</span><span class="mid"><b>${esc(s.nmsls||id)}</b><span class="meta">${petugasTxt(id)}<span>${t.n} titik · <b style="color:var(--ok);display:inline;font-size:inherit">${t.benar} benar</b></span>${t.salah?`<span style="color:var(--magenta)">${t.salah} kendala</span>`:""}${t.far?`<span style="color:var(--warn)">${t.far} perlu dicek</span>`:""}${t.tem-t.dij?`<span style="color:var(--magenta)">${t.tem-t.dij} temuan</span>`:""}${s.berubah_batas?`<span style="color:var(--cyan);font-weight:700">● batas berubah</span>`:""}${s.peta_sls?`<span style="color:var(--warn);font-weight:700">⇄ peta ${s.peta_sls.slice(10,14)}</span>`:""}${canEdit(id)?"":`<span class="dim">👁 lihat saja</span>`}${S.scans[petaOf(id)]?"":`<span class="dim">scan belum ada</span>`}</span></span><span class="pill ${t.status[1]}">${t.status[0]}</span></button>`}).join("")}
 function setSel(id){S.sel=id;store.set("ctb-sel-"+KEC.kode+"-"+S.me.email,id)}
 
 /* ---------- Peta ---------- */
