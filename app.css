@@ -755,3 +755,6 @@ h1{font-size:19px;font-weight:800;letter-spacing:-.02em}
 .top-actions .btn:not(.btn-grad) svg{stroke:var(--ink)}
 :root .sls-row,:root .li,:root .group.sub,:root.light .sls-row,:root.light .li,:root.light .group.sub{border-color:var(--line2)!important}
 :root.light .hello h1,:root.light .section-h h2{color:var(--ink)}
+input[type=range]{accent-color:var(--forest)!important}
+.spinner{border-color:rgba(214,238,48,.25)!important;border-top-color:var(--lime)!important}
+.on-peta :is(.map-head,.sheet) .pill{font-weight:800}
