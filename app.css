@@ -887,3 +887,26 @@ html:root .app.on-peta .pick-pop .pk-u{color:var(--ink)!important}
 #app .pick-pop .pk-u{color:var(--ink)!important}
 #app .sls-row .k,#app .no{color:var(--lime)!important}
 .toast.glass,.toast.glass.solid{background:#0a0f0d!important;color:#f3f6f2!important;border:2px solid var(--lime)!important}
+
+/* ===================== v39 NOMOR BANGUNAN & TOMBOL ✓ / ! ===================== */
+#app .no,#app .on-peta .no,#app .pop-h .no{background:#0a0f0d!important;color:var(--lime)!important;border:2px solid #0a0f0d;border-radius:8px!important;
+  transform:rotate(-3deg);box-shadow:2px 2px 0 rgba(10,15,13,.35);font-family:var(--mono)!important;font-weight:800!important}
+:root:not(.light) #app .no{border-color:var(--edge);box-shadow:2px 2px 0 #050807}
+#app .no.new{color:#ffd23f!important}
+#app .no.warn{color:#ff9d6e!important}
+#app .no.mag{color:#ffb3e6!important}
+#app .pop-h .no{font-size:15px!important;padding:5px 8px!important}
+/* tombol ✓ dan ! : kotak berbingkai tinta, bayangan padat */
+#app .ic-ok,#app .ic-kd{width:32px;height:32px;border-radius:10px!important;background:var(--card)!important;color:var(--ink)!important;border:2px solid var(--edge)!important;
+  box-shadow:2px 2px 0 var(--edge)!important;font:800 15px/1 var(--font)!important;transform:rotate(-2deg)}
+#app .ic-kd{transform:rotate(2deg)}
+#app .ic-ok:hover,#app .ic-kd:hover{transform:translate(-1px,-1px)!important;box-shadow:3px 3px 0 var(--edge)!important}
+#app .ic-ok:active,#app .ic-kd:active{transform:translate(1px,1px)!important;box-shadow:none!important}
+#app .ic-ok.on{background:var(--lime)!important;color:#0a0f0d!important;border-color:#0a0f0d!important;box-shadow:2px 2px 0 #0a0f0d!important}
+#app .ic-kd.on{background:#ff8fb1!important;color:#0a0f0d!important;border-color:#0a0f0d!important;box-shadow:2px 2px 0 #0a0f0d!important}
+/* baris titik di panel */
+#app .sheet .li{background:var(--card2)!important;border:2px solid var(--line2)!important;border-radius:12px!important}
+#app .sheet .li:hover{border-color:var(--edge)!important}
+#app .sheet .li .txt b{font-family:var(--font);font-weight:700}
+/* popup titik */
+#app .leaflet-popup-content-wrapper b{font-family:var(--font)}
