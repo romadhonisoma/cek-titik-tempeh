@@ -10,7 +10,7 @@ const NAMA_KEC = () => (S.cfg && S.cfg.nama_kec) || KEC.nama;
 const TARGET_TITIK_ = () => +(S.cfg && S.cfg.target_titik) || 0;
 const TARGET_SLS_ = () => +(S.cfg && S.cfg.target_sls) || 0;
 /* naikkan bersama ?v= di index.html dan nama cache di sw.js setiap rilis */
-const VERSI = "42", VERSI_TGL = "26 Okt 2026";
+const VERSI = "43", VERSI_TGL = "26 Okt 2026";
 const MOBILE = () => innerWidth < 960;
 const S = {
   me: null, view: "beranda", sel: null, scan: "wss", opac: .85, showPts: true, showBatas: true, base: "sat",
@@ -146,13 +146,13 @@ function slsStat(s){
   const r=S.sls[s]||{},cor=corrOf(s);
   const benar=cor.filter(isOk).length,salah=cor.filter(isKendala).length,pindah=cor.filter(c=>c.jenis==="pindah").length;
   const tem=S.temuan[s]||[],dij=tem.filter(t=>t.jawaban).length,done=!!(S.status[s]&&S.status[s].selesai);
-  return {n:r.n_titik||0,benar,salah,pindah,far:r.n_far||0,tem:tem.length,dij,done,
+  return {n:r.n_titik||0,benar,salah,pindah,far:0,tem:tem.length,dij,done,
     status:done?["Sudah dicek","p-ok"]:(cor.length||dij?["Sedang dicek","p-info"]:["Belum dicek","p-mute"])};
 }
 async function loadSlsDetail(id){
   if(!S.pts[id]){
     const rows=await fetchAll(()=>sb.from("titik").select("assignment_id,idsubsls,no_bang,unique_bang,kode_bang,kk,usaha,nama_usaha,lon,lat,far,info,keluarga").eq("idsubsls",id).order("assignment_id"));
-    S.pts[id]=rows.map(r=>({id:r.assignment_id,aid:r.assignment_id,sls:id,x:r.lon,y:r.lat,no:r.no_bang||"",kb:r.kode_bang,kk:r.kk,usaha:r.usaha,nu:r.nama_usaha,far:r.far,ub:r.unique_bang||id+"#"+r.no_bang,info:r.info,kel:Array.isArray(r.keluarga)?r.keluarga:null}));
+    S.pts[id]=rows.map(r=>({id:r.assignment_id,aid:r.assignment_id,sls:id,x:r.lon,y:r.lat,no:r.no_bang||"",kb:r.kode_bang,kk:r.kk,usaha:r.usaha,nu:r.nama_usaha,far:false,ub:r.unique_bang||id+"#"+r.no_bang,info:r.info,kel:Array.isArray(r.keluarga)?r.keluarga:null}));
   }
   const ar=petaOf(id);
   for(const kd of new Set([S.sls[id].kddesa,(S.sls[ar]||S.sls[id]).kddesa]))if(!S.geoms["d"+kd]){
@@ -451,7 +451,7 @@ function vBeranda(){
         <div class="hero-bar"><i style="width:${pc.toFixed(1)}%"></i></div></div>
       <div class="angka"><small class="angka-t">${esc(NAMA_KEC())} dalam Angka</small><div class="angka-row">
         <div class="a hi"><b>SLS beres</b><span class="v mono">${fmt(tot.done)}<small>/${fmt(sl.length)}</small></span><small>${nBatas} berubah batas</small></div>
-        <div class="a"><b>Perlu dicek</b><span class="v mono">${fmt(tot.far)}</span><small>nomor sama berjauhan</small></div>
+        <div class="a"><b>Titik benar</b><span class="v mono">${fmt(tot.benar)}</span><small>dari ${fmt(tot.n)} titik</small></div>
         <div class="a"><b>Perbaikan lokasi</b><span class="v mono">${fmt(tot.pindah)}</span><small>${fmt(tot.salah)} titik ada kendala</small></div>
         <div class="a"><b>Temuan admin</b><span class="v mono">${fmt(tot.dij)}<small>/${fmt(tot.tem)}</small></span><small>sudah dijawab</small></div>
       </div></div></div>`})()}
@@ -607,7 +607,7 @@ function renderHead0(first){
      ${isAdmin()?`<button class="btn btn-sm btn-ghost" id="swapBtn" type="button" style="justify-self:start">Kode SLS tertukar? Pilih peta yang cocok</button>`:""}
      <div class="row between">
        <div class="row" style="gap:6px"><button type="button" class="chip ${S.showPts?"on":""}" id="tPts">Titik</button><button type="button" class="chip ${S.showBatas?"on":""}" id="tBat">Batas SLS</button><button type="button" class="chip ${S.base==="sat"?"on":""}" id="tBase">Satelit</button></div>
-       <div class="legend"><span><i style="background:var(--pt)"></i>asli</span><span><i style="background:var(--pt-new)"></i>perbaikan</span><span><i style="background:var(--pt);border-color:#ffb648"></i>perlu dicek</span></div>
+       <div class="legend"><span><i style="background:var(--pt)"></i>asli</span><span><i style="background:var(--pt-new)"></i>perbaikan</span></div>
      </div>
    </div>`;
   $("#headMin").onclick=()=>collapseHead(true);
@@ -684,12 +684,13 @@ function onMapClick(e){
 /* ---------- Popup ---------- */
 function maskNik(v){v=String(v);return v.length>6?v.slice(0,4)+"*".repeat(v.length-6)+v.slice(-2):"******"}
 const kkNames=p=>p.kel&&p.kel.length?p.kel.map(k=>k.n).filter(Boolean).join(", "):"";
+const jenisBang=p=>p.kk&&(p.usaha>0)?"Keluarga & usaha":p.kk?"Keluarga":(p.usaha>0||p.nu)?"Usaha":"—";
 const ptTitle=(p,def)=>kkNames(p)||p.nu||def;
 function corrMeta(c){return c?`${esc(nameOf(c.by))} · ${esc(tgl(c.at))}`:""}
 function popHtml(p){
   const c=S.corr[p.id],d=S.draft&&S.focus===p.id?S.draft:null,ed=canEdit(p.sls);
   const same=ptsOf(S.sel).filter(x=>x.ub===p.ub).length;
-  const head=`<div class="pop-h"><span class="no ${c&&c.jenis==="pindah"?"new":(p.far?"warn":"")}">${esc(+p.no||p.no)}</span><div style="min-width:0"><b>${esc(ptTitle(p,p.kk?"Bangunan tempat tinggal":"Bangunan nomor "+(+p.no||p.no)))}</b><small class="muted">${p.kel&&p.kel.length?p.kel.length+" KK"+(p.nu?" · "+esc(p.nu):""):same+" keluarga/usaha"} · kode ${esc(p.kb)}</small></div></div>`;
+  const head=`<div class="pop-h"><span class="no ${c&&c.jenis==="pindah"?"new":(p.far?"warn":"")}">${esc(+p.no||p.no)}</span><div style="min-width:0"><b>${esc(ptTitle(p,p.kk?"Bangunan tempat tinggal":"Bangunan nomor "+(+p.no||p.no)))}</b><small class="muted">${[jenisBang(p),p.kel&&p.kel.length?p.kel.length+" KK":"",p.nu?esc(p.nu):""].filter(Boolean).join(" · ")}</small></div></div>`;
   if(d&&d.mode==="tanpa")return `<div class="pop">${head}
       <span class="pill p-mag" style="justify-self:start">Titik bangunan tidak ada di scan</span>
       <small class="muted">Tulis nomor bangunan yang <b>ada di gambar scan</b> SLS ini tetapi <b>tidak punya titik digital</b>. Pisahkan dengan koma.</small>
@@ -794,8 +795,7 @@ function renderBanner(){
   const wrap=map&&map.getContainer().parentElement;
   if(!S.placing){wrap&&wrap.classList.remove("place-mode","cross");placeMini();if(!el.hidden){el.style.transition="opacity .2s,transform .2s var(--ease-in)";el.style.opacity="0";el.style.transform="translate(-50%,-14px)";setTimeout(()=>{el.hidden=true;el.style.cssText=""},200)}return}
   const p=ptById(S.placing);wrap.classList.add("place-mode","cross");
-  if(MOBILE()){el.hidden=true;el.innerHTML="";placeMini();return}
-  el.style.cssText="";el.hidden=false;
+  el.hidden=true;el.innerHTML="";placeMini();return;
   el.innerHTML=`<span class="no new">${esc(+p.no||p.no)}</span><div style="flex:1;min-width:0"><b>Geser peta sampai tanda ＋ tepat di bangunan</b><div class="muted" style="font-size:11px">${MOBILE()?"Perbesar peta agar pas, lalu tekan Simpan":"Bisa juga klik langsung di peta, lalu tekan Simpan / Enter (Esc = batal)"}</div></div><div class="row" style="gap:6px;flex-wrap:nowrap"><button class="btn btn-ghost btn-sm" id="cancelPlace" type="button">Batal</button><button class="btn btn-grad btn-sm" id="okPlace" type="button">Simpan</button></div>`;
   $("#cancelPlace").onclick=()=>{S.placing=null;renderBanner();drawPts()};
   $("#okPlace").onclick=async e=>{e.currentTarget.disabled=true;await placeAt(map.getCenter())};
@@ -803,7 +803,7 @@ function renderBanner(){
 function placeMini(){
   const top=$("#mapTop");if(!top)return;
   const old=top.querySelector(".place-mini"),card=top.querySelector(".map-head,.mini-head");
-  if(!S.placing||!MOBILE()){if(old){old.classList.add("out");setTimeout(()=>{old.remove();card&&card.classList.remove("placing")},180)}else card&&card.classList.remove("placing");return}
+  if(!S.placing){if(old){old.classList.add("out");setTimeout(()=>{old.remove();card&&card.classList.remove("placing")},180)}else card&&card.classList.remove("placing");return}
   const p=ptById(S.placing);if(!p||!card)return;
   const html=`<span class="no new">${esc(+p.no||p.no)}</span><button class="pm-x" id="cancelPlace" type="button">Batal</button><button class="pm-ok" id="okPlace" type="button">Simpan</button>`;
   let m=old;if(m){m.classList.remove("out");m.innerHTML=html}
@@ -893,10 +893,10 @@ function renderSheet(anim){
     else if(S.detail&&ptById(S.detail)){const p=ptById(S.detail),c=S.corr[p.id];bodyCls=anim?"a-inR":"";
       const info=p.info&&typeof p.info==="object"?Object.entries(p.info).filter(([k,v])=>v!==null&&v!==""&&!/^(kd|nm)(prov|kab|kec|desa|sls)$|latitude|longitude|level_6|idsubsls|flag_/i.test(k)):[];
       body=`<div style="display:grid;gap:8px;padding-top:10px"><button class="btn btn-ghost btn-sm" id="backList" type="button" style="justify-self:start">← Daftar</button>
-        <div class="row" style="gap:10px;flex-wrap:nowrap"><span class="no ${p.far?"warn":""}" style="font-size:15px;padding:5px 8px">${esc(+p.no||p.no)}</span><div style="min-width:0"><b>${esc(ptTitle(p,"Bangunan nomor "+(+p.no||p.no)))}</b><div class="mono dim" style="font-size:10.5px">${esc(p.ub)}</div></div></div>
+        <div class="row" style="gap:10px;flex-wrap:nowrap"><span class="no ${p.far?"warn":""}" style="font-size:15px;padding:5px 8px">${esc(+p.no||p.no)}</span><div style="min-width:0"><b>${esc(ptTitle(p,"Bangunan nomor "+(+p.no||p.no)))}</b><div class="dim" style="font-size:11px">${jenisBang(p)}</div></div></div>
         ${p.kel&&p.kel.length?`<div class="kel"><div class="eyebrow">Keluarga di bangunan ini</div>${p.kel.map((k,i)=>`<div class="kel-r"><span class="mono dim">${i+1}</span><b>${esc(k.n||"—")}</b><span><small class="muted">Jml angg keluarga</small> ${esc(k.a??"—")}</span><span><small class="muted">Status bangunan</small> ${esc(k.s||"—")}</span>${Array.isArray(k.m)&&k.m.length?`<div class="kel-m"><div class="kel-mh">Anggota keluarga (${k.m.length})</div>${k.m.map((x,j)=>`<div class="kel-mr"><span class="mono">${j+1}</span><span class="nm">${esc(x.n||"—")}</span><span class="hub${x.h?"":" kosong"}">${esc(x.h||"—")}</span></div>`).join("")}</div>`:""}</div>`).join("")}</div>`:""}
-        <dl class="kv"><dt>Keluarga</dt><dd>${p.kk?"Ada":"Tidak ada"}</dd><dt>Usaha</dt><dd>${esc(p.usaha)}</dd><dt>Kode bangunan</dt><dd>${esc(p.kb)}</dd><dt>Koordinat asli</dt><dd class="mono" style="font-size:11px">${p.y.toFixed(6)}, ${p.x.toFixed(6)}</dd>${c?`<dt>Status</dt><dd>${esc(JENIS[c.jenis])} · ${esc(nameOf(c.by))} · ${esc(tgl(c.at))}</dd>`:""}${c&&c.note?`<dt>Catatan</dt><dd>${esc(c.note)}</dd>`:""}${S.riw&&S.riw[p.id]?`<dt>Riwayat terakhir</dt><dd>${esc(JENIS[S.riw[p.id].jenis]||"")} oleh ${esc(nameOf(S.riw[p.id].oleh_email))} · ${esc(tgl(S.riw[p.id].waktu))} · digabung ${esc(tgl(S.riw[p.id].digabung_at))}</dd>`:""}${c&&c.lat!=null?`<dt>Koordinat baru</dt><dd class="mono" style="font-size:11px;color:var(--warn)">${c.lat.toFixed(6)}, ${c.lng.toFixed(6)}</dd>`:""}
-        ${info.map(([k,v])=>`<dt>${esc(k)}</dt><dd>${esc(/nik/i.test(k)?maskNik(v):v)}</dd>`).join("")}<dt>assignment_id</dt><dd class="mono" style="font-size:10px">${esc(p.aid)}</dd></dl>
+        <dl class="kv"><dt>Jenis bangunan</dt><dd>${jenisBang(p)}</dd>${p.nu?`<dt>Nama usaha</dt><dd>${esc(p.nu)}</dd>`:""}<dt>Koordinat asli</dt><dd class="mono" style="font-size:11px">${p.y.toFixed(6)}, ${p.x.toFixed(6)}</dd>${c?`<dt>Status</dt><dd>${esc(JENIS[c.jenis])} · ${esc(nameOf(c.by))} · ${esc(tgl(c.at))}</dd>`:""}${c&&c.note?`<dt>Catatan</dt><dd>${esc(c.note)}</dd>`:""}${S.riw&&S.riw[p.id]?`<dt>Riwayat terakhir</dt><dd>${esc(JENIS[S.riw[p.id].jenis]||"")} oleh ${esc(nameOf(S.riw[p.id].oleh_email))} · ${esc(tgl(S.riw[p.id].waktu))} · digabung ${esc(tgl(S.riw[p.id].digabung_at))}</dd>`:""}${c&&c.lat!=null?`<dt>Koordinat baru</dt><dd class="mono" style="font-size:11px;color:var(--warn)">${c.lat.toFixed(6)}, ${c.lng.toFixed(6)}</dd>`:""}
+        </dl>
         <small class="dim">Data titik asli tidak bisa diubah. Perbaikan disimpan di layer terpisah (titik kuning).</small></div>`;
     } else if(!pts.length&&!tem.length){
       body=`<div class="empty">SLS ini tidak punya titik bangunan (mis. sawah/kebun).</div>
