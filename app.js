@@ -10,7 +10,7 @@ const NAMA_KEC = () => (S.cfg && S.cfg.nama_kec) || KEC.nama;
 const TARGET_TITIK_ = () => +(S.cfg && S.cfg.target_titik) || 0;
 const TARGET_SLS_ = () => +(S.cfg && S.cfg.target_sls) || 0;
 /* naikkan bersama ?v= di index.html dan nama cache di sw.js setiap rilis */
-const VERSI = "33", VERSI_TGL = "26 Okt 2026";
+const VERSI = "35", VERSI_TGL = "26 Okt 2026";
 const MOBILE = () => innerWidth < 960;
 const S = {
   me: null, view: "beranda", sel: null, scan: "wss", opac: .85, showPts: true, showBatas: true, base: "sat",
@@ -68,7 +68,9 @@ applyTheme();
 let deferredInstall=null;
 addEventListener("beforeinstallprompt",e=>{e.preventDefault();deferredInstall=e});
 addEventListener("appinstalled",()=>{store.set("ctb-install-seen","1");toast("Aplikasi terpasang di perangkat ini.")});
-if("serviceWorker" in navigator)addEventListener("load",()=>navigator.serviceWorker.register("sw.js").catch(()=>{}));
+if("serviceWorker" in navigator){const had=!!navigator.serviceWorker.controller;
+  addEventListener("load",()=>navigator.serviceWorker.register("sw.js").catch(()=>{}));
+  navigator.serviceWorker.addEventListener("controllerchange",()=>{if(had)setTimeout(()=>toast("Versi baru aplikasi sudah diunduh. Tutup lalu buka lagi aplikasinya untuk memakainya.",7000),1500)})}
 const isStandalone=()=>matchMedia("(display-mode: standalone)").matches||navigator.standalone;
 function hideInstall(){const el=$("#install");if(el.hidden)return;el.classList.add("leaving");setTimeout(()=>{el.hidden=true;el.classList.remove("leaving")},240)}
 function showInstall(howTo){
@@ -90,7 +92,17 @@ async function doInstall(){
 }
 
 /* ---------- Data ---------- */
-async function fetchAll(build,page=1000){let out=[],from=0;for(;;){const{data,error}=await build().range(from,from+page-1);if(error)throw error;out=out.concat(data);if(data.length<page)break;from+=page}return out}
+/* ambil semua baris: halaman pertama dulu, sisanya 6 halaman sekaligus (paralel) */
+async function fetchAll(build,page=1000){
+  const first=await build().range(0,page-1);if(first.error)throw first.error;let out=first.data;if(out.length<page)return out;
+  for(let from=page;;from+=6*page){
+    const ps=await Promise.all([0,1,2,3,4,5].map(i=>build().range(from+i*page,from+(i+1)*page-1)));let done=false;
+    for(const{data,error}of ps){if(error)throw error;out=out.concat(data);if(data.length<page){done=true;break}}
+    if(done)return out}}
+/* simpanan data di IndexedDB (muat besar, tidak dibatasi 5 MB seperti localStorage) */
+const IDB=(()=>{let p;const db=()=>p||(p=new Promise((ok,no)=>{const r=indexedDB.open("ctb",1);r.onupgradeneeded=()=>r.result.createObjectStore("kv");r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error)}));
+  const tx=(m,f)=>db().then(d=>new Promise((ok,no)=>{const t=d.transaction("kv",m),q=f(t.objectStore("kv"));t.oncomplete=()=>ok(q&&q.result);t.onerror=()=>no(t.error)}));
+  return{get:k=>tx("readonly",o=>o.get(k)).catch(()=>null),set:(k,v)=>tx("readwrite",o=>o.put(v,k)).catch(()=>{}),del:k=>tx("readwrite",o=>o.delete(k)).catch(()=>{})}})();
 const me=()=>S.me;
 const isAdmin=()=>!!(S.me&&S.me.admin);
 const isPML=()=>S.me&&(S.me.peran==="PML"||S.me.admin);
@@ -105,18 +117,19 @@ async function loadAll(){
   const [sls,ppl,kor,tem,st,sc,riw,cfg]=await Promise.all([
     fetchAll(()=>sb.from("sls").select("idsubsls,nmsls,kddesa,nmdesa,ppl_email,n_titik,n_far,berubah_batas,peta_sls").order("idsubsls")),
     fetchAll(()=>sb.from("petugas").select("email,nama,peran,pml_email,admin,akses").order("email")),
-    fetchAll(()=>sb.from("koreksi").select("*").order("assignment_id")),
+    fetchAll(()=>sb.from("koreksi").select("assignment_id,idsubsls,no_bang,jenis,lat,lon,catatan,oleh_email,updated_at,status,jumlah").order("assignment_id")),
     fetchAll(()=>sb.from("temuan").select("id,idsubsls,jenis,no_bang,keterangan,jawaban,dijawab_oleh").order("id")),
     fetchAll(()=>sb.from("sls_status").select("*").order("idsubsls")),
     fetchAll(()=>sb.from("scan").select("key,idsubsls,jenis").order("key")),
-    fetchAll(()=>sb.from("riwayat").select("*").order("assignment_id")).catch(()=>[]),
+    fetchAll(()=>sb.from("riwayat").select("assignment_id,jenis,oleh_email,waktu,digabung_at").order("assignment_id")).catch(()=>[]),
     Promise.resolve(sb.from("pengaturan").select("kode_kec,nama_kec,nama_kab,target_titik,target_sls").maybeSingle()).then(r=>r&&r.data).catch(()=>null)
   ]);
   const d={sls,ppl,kor,tem,st,sc,riw,cfg};applyData(d);
-  try{localStorage.setItem(cacheKey(S.me.email),JSON.stringify({v:2,t:Date.now(),me:S.me,d}))}catch(e){}
+  IDB.set(cacheKey(S.me.email),{v:3,t:Date.now(),me:S.me,d});
 }
 const cacheKey=email=>"ctb-cache-"+KEC.kode+"-"+email;
-function cacheGet(email){try{const c=JSON.parse(localStorage.getItem(cacheKey(email))||"null");return c&&c.v===2?c:null}catch(e){return null}}
+async function cacheGet(email){const c=await IDB.get(cacheKey(email));return c&&c.v===3?c:null}
+try{Object.keys(localStorage).filter(k=>k.startsWith("ctb-cache-")).forEach(k=>localStorage.removeItem(k))}catch(e){}
 function applyData({sls,ppl,kor,tem,st,sc,riw,cfg}){
   S.cfg={...CFGDEF,...(cfg||{})};document.title="Cek Titik Bangunan · "+NAMA_KEC();
   S._ci=null;S._corrVer=(S._corrVer||0)+1;
@@ -169,7 +182,7 @@ async function afterLogin(session){
   if(S._logging)return;S._logging=true;
   try{
     const email=(session.user.email||"").toLowerCase();
-    const cache=cacheGet(email);
+    const cache=await cacheGet(email);
     if(cache&&cache.me&&cache.me.email===email){
       /* buka langsung dari data tersimpan, lalu segarkan dari server di belakang */
       S.me=cache.me;applyData(cache.d);
@@ -195,7 +208,7 @@ async function bgRefresh(email){
   try{
     const {data,error}=await sb.from("petugas").select("*").eq("email",email).maybeSingle();
     if(error)return;
-    if(!data){store.del(cacheKey(email));await sb.auth.signOut();S.me=null;showLogin(`<b style="color:var(--bad)">Email ${esc(email)} belum terdaftar.</b>`);return}
+    if(!data){IDB.del(cacheKey(email));await sb.auth.signOut();S.me=null;showLogin(`<b style="color:var(--bad)">Email ${esc(email)} belum terdaftar.</b>`);return}
     S.me=data;await loadAll();
     if(S.view==="peta"){if(map&&S.sel){drawPts();renderSheet();renderHead()}}
     else if(S.view==="beranda"||S.view==="koreksi"){const sc=$("#view .scroll"),y=sc?sc.scrollTop:0;render(0);const n=$("#view .scroll");if(n)n.scrollTop=y}
