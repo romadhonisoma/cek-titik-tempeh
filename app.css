@@ -910,3 +910,14 @@ html:root .app.on-peta .pick-pop .pk-u{color:var(--ink)!important}
 #app .sheet .li .txt b{font-family:var(--font);font-weight:700}
 /* popup titik */
 #app .leaflet-popup-content-wrapper b{font-family:var(--font)}
+
+/* ===================== v40 ANGGOTA KELUARGA ===================== */
+.kel-r{border:2px solid var(--line2)!important;border-radius:12px!important;background:var(--card2)!important}
+.kel-m{grid-column:1/-1;display:grid;gap:4px;margin-top:6px;padding-top:7px;border-top:2px dashed var(--line2)}
+.kel-mh{font:800 10.5px/1.2 var(--font);color:var(--ink2);margin-bottom:2px}
+.kel-mr{display:grid;grid-template-columns:22px minmax(0,1fr) auto;align-items:center;gap:8px;padding:4px 8px;border-radius:9px;background:var(--card);border:1.5px solid var(--line)}
+.kel-mr .mono{font-size:10px!important;color:var(--ink3)}
+.kel-mr .nm{font-weight:700;font-size:11.5px;min-width:0;line-height:1.25;overflow-wrap:anywhere}
+.kel-mr .hub{font:800 10px/1.2 var(--body);padding:2px 8px;border-radius:999px;background:#0a0f0d;color:var(--lime);white-space:nowrap}
+#app .kel-mr .hub{color:var(--lime)!important}
+#app .kel-mr .hub.kosong{background:transparent;color:var(--ink3)!important;border:1.5px dashed var(--line2)}
