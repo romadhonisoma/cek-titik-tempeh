@@ -10,7 +10,7 @@ const NAMA_KEC = () => (S.cfg && S.cfg.nama_kec) || KEC.nama;
 const TARGET_TITIK_ = () => +(S.cfg && S.cfg.target_titik) || 0;
 const TARGET_SLS_ = () => +(S.cfg && S.cfg.target_sls) || 0;
 /* naikkan bersama ?v= di index.html dan nama cache di sw.js setiap rilis */
-const VERSI = "41", VERSI_TGL = "26 Okt 2026";
+const VERSI = "42", VERSI_TGL = "26 Okt 2026";
 const MOBILE = () => innerWidth < 960;
 const S = {
   me: null, view: "beranda", sel: null, scan: "wss", opac: .85, showPts: true, showBatas: true, base: "sat",
@@ -587,7 +587,8 @@ function openPick(){const host=$(".pick");if(!host||host.querySelector(".pick-po
 function pickOut(e){if(!e.target.closest(".pick"))closePick()}
 function closePick(){document.removeEventListener("pointerdown",pickOut,true);const pop=$(".pick-pop");const b=$("#slsBtn");b&&b.setAttribute("aria-expanded","false");
   if(pop){pop.classList.remove("show");pop.classList.add("hide");setTimeout(()=>pop.remove(),200)}}
-function renderHead(first){
+function renderHead(first){renderHead0(first);placeMini()}
+function renderHead0(first){
   const el=$("#mapTop");if(!el)return;const ar=petaOf(S.sel),sc=S.urls[ar]||{},has=!!(S.scans[ar]);
   if(S.minHead){
     el.innerHTML=`<div class="glass solid mini-head a-grow"><span class="mono" style="font-size:11.5px;font-weight:700">${(S.sel||"").slice(10,14)}</span><span class="dim" style="font-size:11px;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(shortNm(S.sls[S.sel].nmsls))}</span><button class="icon-btn" id="headMax" type="button" aria-label="Buka pengaturan peta">${ICON.layers}</button></div>`;
@@ -791,11 +792,26 @@ function startPlace(p){
 function renderBanner(){
   const el=$("#placeBanner");if(!el)return;
   const wrap=map&&map.getContainer().parentElement;
-  if(!S.placing){wrap&&wrap.classList.remove("place-mode","cross");if(!el.hidden){el.style.transition="opacity .2s,transform .2s var(--ease-in)";el.style.opacity="0";el.style.transform="translate(-50%,-14px)";setTimeout(()=>{el.hidden=true;el.style.cssText=""},200)}return}
-  const p=ptById(S.placing);el.style.cssText="";el.hidden=false;wrap.classList.add("place-mode","cross");
+  if(!S.placing){wrap&&wrap.classList.remove("place-mode","cross");placeMini();if(!el.hidden){el.style.transition="opacity .2s,transform .2s var(--ease-in)";el.style.opacity="0";el.style.transform="translate(-50%,-14px)";setTimeout(()=>{el.hidden=true;el.style.cssText=""},200)}return}
+  const p=ptById(S.placing);wrap.classList.add("place-mode","cross");
+  if(MOBILE()){el.hidden=true;el.innerHTML="";placeMini();return}
+  el.style.cssText="";el.hidden=false;
   el.innerHTML=`<span class="no new">${esc(+p.no||p.no)}</span><div style="flex:1;min-width:0"><b>Geser peta sampai tanda ＋ tepat di bangunan</b><div class="muted" style="font-size:11px">${MOBILE()?"Perbesar peta agar pas, lalu tekan Simpan":"Bisa juga klik langsung di peta, lalu tekan Simpan / Enter (Esc = batal)"}</div></div><div class="row" style="gap:6px;flex-wrap:nowrap"><button class="btn btn-ghost btn-sm" id="cancelPlace" type="button">Batal</button><button class="btn btn-grad btn-sm" id="okPlace" type="button">Simpan</button></div>`;
   $("#cancelPlace").onclick=()=>{S.placing=null;renderBanner();drawPts()};
   $("#okPlace").onclick=async e=>{e.currentTarget.disabled=true;await placeAt(map.getCenter())};
+}
+function placeMini(){
+  const top=$("#mapTop");if(!top)return;
+  const old=top.querySelector(".place-mini"),card=top.querySelector(".map-head,.mini-head");
+  if(!S.placing||!MOBILE()){if(old){old.classList.add("out");setTimeout(()=>{old.remove();card&&card.classList.remove("placing")},180)}else card&&card.classList.remove("placing");return}
+  const p=ptById(S.placing);if(!p||!card)return;
+  const html=`<span class="no new">${esc(+p.no||p.no)}</span><button class="pm-x" id="cancelPlace" type="button">Batal</button><button class="pm-ok" id="okPlace" type="button">Simpan</button>`;
+  let m=old;if(m){m.classList.remove("out");m.innerHTML=html}
+  else{m=document.createElement("div");m.className="place-mini";m.innerHTML=html;
+    const row=card.querySelector(".legend");if(row)row.parentElement.appendChild(m);else card.appendChild(m)}
+  card.classList.add("placing");
+  m.querySelector("#cancelPlace").onclick=()=>{S.placing=null;renderBanner();drawPts()};
+  m.querySelector("#okPlace").onclick=async e=>{e.currentTarget.disabled=true;await placeAt(map.getCenter())};
 }
 function crossMode(){return true}
 document.addEventListener("keydown",e=>{

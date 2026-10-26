@@ -921,3 +921,16 @@ html:root .app.on-peta .pick-pop .pk-u{color:var(--ink)!important}
 .kel-mr .hub{font:800 10px/1.2 var(--body);padding:2px 8px;border-radius:999px;background:#0a0f0d;color:var(--lime);white-space:nowrap}
 #app .kel-mr .hub{color:var(--lime)!important}
 #app .kel-mr .hub.kosong{background:transparent;color:var(--ink3)!important;border:1.5px dashed var(--line2)}
+/* v42: tombol ubah lokasi di kartu pengaturan peta (HP) */
+.map-head.placing .legend{display:none}
+.place-mini{display:flex;align-items:center;gap:5px;margin-left:auto;animation:pmIn .26s cubic-bezier(.2,.8,.2,1) both}
+.place-mini.out{animation:pmOut .18s ease-in both}
+@keyframes pmIn{from{opacity:0;transform:translateX(18px)}}
+@keyframes pmOut{to{opacity:0;transform:translateX(18px)}}
+.place-mini .no{font-size:12px!important;padding:3px 6px!important}
+#app .place-mini button{font:800 11.5px/1 var(--body);padding:7px 10px;border-radius:999px;cursor:pointer;white-space:nowrap}
+#app .place-mini .pm-x{background:transparent;color:var(--ink)!important;border:1.5px solid var(--edge,var(--ink))}
+#app .place-mini .pm-ok{background:var(--lime);color:#0a0f0d!important;border:1.5px solid #0a0f0d;box-shadow:2px 2px 0 #0a0f0d}
+#app .place-mini .pm-ok:disabled{opacity:.6}
+.mini-head.placing{padding-right:5px}
+.mini-head .place-mini{margin-left:4px}
