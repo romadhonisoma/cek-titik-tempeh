@@ -10,7 +10,7 @@ const NAMA_KEC = () => (S.cfg && S.cfg.nama_kec) || KEC.nama;
 const TARGET_TITIK_ = () => +(S.cfg && S.cfg.target_titik) || 0;
 const TARGET_SLS_ = () => +(S.cfg && S.cfg.target_sls) || 0;
 /* naikkan bersama ?v= di index.html dan nama cache di sw.js setiap rilis */
-const VERSI = "43", VERSI_TGL = "26 Okt 2026";
+const VERSI = "44", VERSI_TGL = "26 Okt 2026";
 const MOBILE = () => innerWidth < 960;
 const S = {
   me: null, view: "beranda", sel: null, scan: "wss", opac: .85, showPts: true, showBatas: true, base: "sat",
@@ -1182,7 +1182,8 @@ async function impTitik(files){
   const srows=S.slsIds.map(id=>({idsubsls:id,n_titik:(per[id]||{}).n||0,n_far:(per[id]||{}).f||0}));
   await upsertBatches("sls",srows,700,"Ringkasan SLS");
   // perbaikan lokasi yang sudah digabung di QGIS: garis & titik kuning dihapus, titik kembali biru
-  const doneFix=(await fetchAll(()=>sb.from("koreksi").select("*").eq("jenis","pindah").order("assignment_id"))).filter(r=>moved.has(r.assignment_id));
+  const nowPos={};rows.forEach(r=>nowPos[r.assignment_id]=[r.lon,r.lat]);
+  const doneFix=(await fetchAll(()=>sb.from("koreksi").select("*").eq("jenis","pindah").order("assignment_id"))).filter(r=>moved.has(r.assignment_id)||(nowPos[r.assignment_id]&&r.lon!=null&&mdist(nowPos[r.assignment_id],[r.lon,r.lat])<=2));
   const now=new Date().toISOString(),rw=doneFix.map(r=>({assignment_id:r.assignment_id,idsubsls:r.idsubsls,jenis:r.jenis,lon:r.lon,lat:r.lat,catatan:r.catatan,oleh_email:r.oleh_email,waktu:r.updated_at,digabung_at:now}));
   for(let i=0;i<rw.length;i+=500){const{error}=await sb.from("riwayat").upsert(rw.slice(i,i+500),{onConflict:"assignment_id"});if(error)throw error}
   // titik yang sudah diperbaiki tetap dihitung benar (centang hijau); catatannya tetap disimpan
